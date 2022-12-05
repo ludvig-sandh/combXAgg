@@ -3,6 +3,7 @@
 PathCAS is a new synchronization mechanism for concurrent data structures introduced in a PPoPP'22 paper.
 
 PathCAS: An Efficient Middle Ground for Concurrent Search Data Structures
+https://mc.uwaterloo.ca/pubs/pathcas/paper.pdf
 https://dl.acm.org/doi/pdf/10.1145/3503221.3508410
 
 The paper has a link to the code artifact for running the experiments in the paper.
