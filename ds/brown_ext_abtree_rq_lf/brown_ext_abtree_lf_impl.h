@@ -1289,6 +1289,13 @@ bool abtree_ns::abtree<DEGREE,K,Compare,RecManager>::fixDegreeViolation(const in
             foundWeightViolation = true;
             fixWeightViolation(tid, l);
         }
+        //if (ixToS >= p->size) {
+        //    printf("ABTREE ERROR: ixToS=%d >= p->size=%d ; ixToL=%d p->weight=%d gp==p?%d gp==NULL?%d gp==root?%d p==root?%d l->leaf?%d\n", ixToS, p->size, ixToL, p->weight, (gp==p), (gp==NULL), (gp==entry), (p==entry), l->leaf);
+        //}
+        if (p->size == 1) {
+            return false; // p has only one child, so we cannot do absorbSibling or distribute... must be resolved at a higher level
+            // in theory might want to search for & fix the corresponding degree violation one step above us rather than returning. in practice this choice should tend to be faster...
+        }
         if (!s->weight) {
             foundWeightViolation = true;
             fixWeightViolation(tid, s);
