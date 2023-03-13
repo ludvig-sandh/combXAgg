@@ -1295,6 +1295,7 @@ bool abtree_ns::abtree<DEGREE,K,Compare,RecManager>::fixDegreeViolation(const in
         if (p->size == 1) {
             return false; // p has only one child, so we cannot do absorbSibling or distribute... must be resolved at a higher level
             // in theory might want to search for & fix the corresponding degree violation one step above us rather than returning. in practice this choice should tend to be faster...
+            // note: this bug was found because of segfaults found indepedently by Ajay Singh and Pedro Ramalhete.
         }
         if (!s->weight) {
             foundWeightViolation = true;
