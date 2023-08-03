@@ -27,7 +27,7 @@ while [ "$#" -ge "1" ]; do
     searchstr=$1
 
     ftemp="_out_${i}.png"
-    trial_to_plot.sh $fname $searchstr $ftemp
+    trial_to_plotline.sh $fname $searchstr $ftemp
     images+=( $ftemp )
 
     shift

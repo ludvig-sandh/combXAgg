@@ -1,3 +1,22 @@
+## this plots a timeline graph wherein
+##   thread number is the y axis,
+##   time is the x axis,
+##   time intervals specified in the input are rendered as colored boxes,
+##   and time points ("blips") are rendered as colored diamonds.
+##
+## it allows you to filter the input data to only display specific named interval/blip events.
+##
+## if blips are included in the data, there is also a "total" line,
+##   containing all blips over all threads, which appears as a row for thread "-1".
+##
+## this program assumes event start/end times are given in nanoseconds.
+##
+## last column is a "label" if you have >4 cols for intervals and >3 for blips.
+## this label can be used to color boxes by specifying color "label".
+## the label is expected to be a number that is then colored using a colormap such as cm.bone...
+##
+## written by trevor brown (trevor.brown@uwaterloo.ca)
+
 ## todo:
 ##  - allow user to specify desired limit for NUMBER of events,
 ##    and prune by duration to hit the limit
@@ -25,6 +44,11 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import cm
 from matplotlib.collections import PatchCollection
 
+
+
+## user configurable settings
+#  you should generally not need to modify getEvent/Thread/Start/End/Color/Label/includeLine.
+#  note includeLine exists primarily to exclude events the user did not specify.
 class Settings:
     infile=""
     outfile=""
@@ -32,14 +56,18 @@ class Settings:
     events_short=[]
     eventsShortToLong=dict()
 
-    maxIntervals=150000     ## soft cap on total number of intervals (to limit render time without confirmation / override)
+    maxIntervals=350000     ## soft cap on total number of intervals (to limit render time without confirmation / override)
     maxThread = 1000        ## max thread for which to render intervals
     windowStart_ms = 0      ## only render intervals starting from x millis
     windowSize_ms = 60000   ## only render intervals for y millis after windowStart_ms
-    minDuration_ms = 1      ## min duration required for an interval to be rendered
+    minDuration_ms = 0      ## min duration required for an interval to be rendered
+    numColors=10            ## number of colors to generate if in rainbow or sequence mode
 
     eventToColor=dict()
-    colorit=itertools.cycle(cm.rainbow(np.linspace(0, 1, 10))) ## 10 colors picked linearly through cm.rainbow
+    cmrainbow=cm.rainbow(np.linspace(0, 1, numColors))  ## numColors colors picked linearly through cm.rainbow
+    cmsequence=cm.bone(np.linspace(0.25, 1, numColors))  ## numColors colors picked linearly from the specified colormap
+    # print("cmrainbow={}".format(cmrainbow))
+    colorit=itertools.cycle(cmrainbow)
 
     def getEvent(self, line):
         return line.split(" ")[0]
@@ -63,10 +91,11 @@ class Settings:
     def getColor(self, line):
         e = self.getEvent(line)
         c = self.eventToColor[e]
-        if c == 'rainbow':
-            return next(self.colorit)
-        else:
-            return c
+        return c
+        # if c == 'rainbow':
+        #     return next(self.colorit)
+        # else:
+        #     return c
 
     def getLabel(self, line):
         if 'blip_' in self.getEvent(line): ## handle case where datapoint is a blip
@@ -126,7 +155,11 @@ class Settings:
             else:
                 self.eventToColor[self.eventsShortToLong[short_event]] = event_color
 
-## configurable parameters
+
+
+##
+## read user args
+##
 scale=1000000               ## nanos to millis
 windowEnd_ms=-1
 mintime_ns=-1
@@ -148,10 +181,21 @@ def split():
 
 if len(sys.argv) < 4:
     print('USAGE: python timeline_advplot.py <infile> <outfile> <event> <color> [[<event> <color>] ...]')
-    print('       <infile> should contain (only) lines w/format "<event> <thread_id> <start_time> <end_time>"')
+    print()
+    print('       <infile> should consist of a sequence of lines, each of which has one of the following formats:')
+    print('               <event> <thread_id> <start_time_ns> <end_time_ns>')
+    print('               <event> <thread_id> <start_time_ns> <end_time_ns> <label_int>')
+    print('               <event_starting_with_blip> <thread_id> <time_ns>')
+    print('               <event_starting_with_blip> <thread_id> <time_ns> <label_int>')
+    print('                 (having different formats for different lines is fine)')
+    print()
     print('       <outfile> is an image to create (with desired extension, e.g., .png or .svg)')
+    print()
     print('       <event> should be an event name present in <infile>')
-    print('       <color> can be any named python color or "rainbow"')
+    print()
+    print('       <color> can be any named python color or "rainbow" or "sequence" or "label"')
+    print('               "sequence" assumes within a thread events are sorted by start time')
+    print('               "label" assumes the last column is a numeric value that will be mapped to a color')
     print()
     print(' Note: __show__ can be specified as <outfile> to launch an interactive figure window instead.')
     exit(1)
@@ -163,9 +207,9 @@ windowEnd_ms = settings.windowStart_ms + settings.windowSize_ms
 start_split = timer()
 last_split = timer()
 
-## build
 
-## compute min and max start time
+
+## compute min and max start time (and total duration)
 # print(settings)
 for line in fileinput.input(settings.infile):
     line = line.rstrip('\r\n')
@@ -182,7 +226,15 @@ for line in fileinput.input(settings.infile):
 print("found min time {} and max time {} duration {} ms".format(mintime_ns, maxtime_ns, (maxtime_ns - mintime_ns) / scale))
 split()
 
-## build data frame (process all lines)
+
+
+##
+## build data frame (process all input lines)
+##
+
+## filter events by event type, duration and time window of interest
+#  (per user specifications in settings class)
+
 EventCol = []
 ThreadCol = []
 StartCol = []
@@ -194,8 +246,11 @@ count = 0
 countmap_accepted = dict()
 countmap_rejected_duration = dict()
 
+rejectPrintLimit = 20
 for line in fileinput.input(settings.infile):
     line = line.rstrip('\r\n')
+
+    ## filter by event type
     if settings.includeLine(line) == True:
         e = settings.getEvent(line)
         if e not in countmap_accepted.keys(): countmap_accepted[e] = 0
@@ -207,27 +262,40 @@ for line in fileinput.input(settings.infile):
         # if 'blip' in line: print('line {} end {}'.format(line, end))
         if end != -1: end = end - mintime_ns
         duration = end - start
-
         # print(line)
 
+        ## filter by duration
         if duration >= settings.minDuration_ms*scale or end == -1:
             if thr <= settings.maxThread:
-                if (start >= settings.windowStart_ms*scale and start <= windowEnd_ms*scale) or (end >= settings.windowStart_ms*scale and end <= windowEnd_ms*scale):
-                    count = count + 1
-                    EventCol.append(e)
-                    ThreadCol.append(int(thr))
-                    StartCol.append(int(start))
-                    FinishCol.append(int(end))
-                    ColorCol.append(settings.getColor(line))
-                    LabelCol.append(settings.getLabel(line))
 
-                    countmap_accepted[e] = countmap_accepted[e] + 1
-                else: print('rejecting {} because of start {} or end {} vs windowStart {} or windowEnd{} or scale {}'.format(line, start, windowStart_ms, windowEnd_ms, scale))
-            else: print('rejecting {} because of thread {}'.format(line, thr))
+                ## filter by time window (disabled for now)
+                #if (start >= settings.windowStart_ms*scale and start <= windowEnd_ms*scale) or (end >= settings.windowStart_ms*scale and end <= windowEnd_ms*scale):
+                count = count + 1
+                EventCol.append(e)
+                ThreadCol.append(int(thr))
+                StartCol.append(int(start))
+                FinishCol.append(int(end))
+                ColorCol.append(settings.getColor(line))
+                LabelCol.append(settings.getLabel(line))
+
+                countmap_accepted[e] = countmap_accepted[e] + 1
+                #else: print('rejecting {} because of start {} or end {} vs windowStart {} or windowEnd{} or scale {}'.format(line, start, windowStart_ms, windowEnd_ms, scale))
+            else:
+                if rejectPrintLimit > 0:
+                    print('  rejecting {} because of thread {}'.format(line, thr))
+                elif rejectPrintLimit == 0:
+                    print('  too many rejected events to list...')
+                rejectPrintLimit = rejectPrintLimit - 1
+
         else:
             # print('rejecting {} because of duration {} given start {} and end {}'.format(line, duration, start, end))
             countmap_rejected_duration[e] = countmap_rejected_duration[e] + 1
-    else: print('rejecting {} because of includeLine:False'.format(line))
+    else:
+        if rejectPrintLimit > 0:
+            print('  rejecting {} because of includeLine:False'.format(line))
+        elif rejectPrintLimit == 0:
+            print('  too many rejected events to list...')
+        rejectPrintLimit = rejectPrintLimit - 1
 
 print()
 print("Added the following events...")
@@ -244,6 +312,10 @@ for e in countmap_rejected_duration.keys():
         print()
 
 split()
+
+
+
+## check for too few or too many lines
 
 if count == 0:
     print("No matching lines found. Check event names.")
@@ -262,6 +334,10 @@ if count > settings.maxIntervals:
 if not good:
     print("skipping render...")
     exit(0)
+
+
+
+## configure plot and/or interactive view
 
 plt.style.use('dark_background')
 
@@ -300,6 +376,10 @@ annot.set_visible(False)
 
 split()
 
+
+
+## compute basic plot dimensions
+
 miny = min(ThreadCol)
 maxy = max(ThreadCol)
 numThreads = maxy - miny + 1
@@ -311,7 +391,8 @@ maxx = max(max(StartCol), max(FinishCol))
 lwidth = max(1, int((height_inches * dots_per_inch) / 5 / numThreads))
 print('automatic lwidth = {}'.format(lwidth))
 
-print([minx, maxx], [miny, maxy])
+print("x in {}, y in {}".format([minx, maxx], [miny, maxy]))
+# print([minx, maxx], [miny, maxy])
 
 if SHOW:
     mng = plt.get_current_fig_manager()
@@ -330,29 +411,80 @@ yboxfrac = 0.7
 yscaler = maxy-miny+2
 xscaler = maxx-minx
 proportional_width = (yboxfrac / yscaler) * xscaler * (height_inches / width_inches)
-print(proportional_width, yboxfrac, xscaler, yscaler)
+print("proportional_width={} yboxfrac={} xscaler={} yscaler={}".format(proportional_width, yboxfrac, xscaler, yscaler))
 
+
+
+# for consistent sequential coloring of boxes per thread
+# (assumes within each thread events are sorted by time)
+threadColorIx = [0 for y in range(maxy-miny+1)]   ## only used if color "sequence" is specified on the command line
+
+
+
+##
+## add patches for all accepted events
+##
+intervalPrintLimit = 10 # dbg
+blipPrintLimit = 10     # dbg
 for e, t, s, f, c, l in zip(EventCol, ThreadCol, StartCol, FinishCol, ColorCol, LabelCol):
     ## if this is a blip, not an interval
     if f == -1:
         xo = (proportional_width / 2) * 0.75 ## to make the diamonds diamondey
         yo = yboxfrac / 2
         patches_over.append(mpl.patches.Polygon(np.array([[s-xo, t], [s, t+yo], [s+xo, t], [s, t-yo]], np.float64), True, color=c, ec='none'))
+
         # patches_over.append(mpl.patches.Ellipse((s, t), proportional_width, yboxfrac, color=c, ec='none'))
         # patches_over.append(mpl.patches.Rectangle((s, t), proportional_width, yboxfrac, color=c, ec='none', angle=45))
 
-        ## extra patch for a "totals" curve at -1
+        ## extra patches for a "total" series of blips at y=-1
         patches_over.append(mpl.patches.Polygon(np.array([[s-xo, -1], [s, -1+yo], [s+xo, -1], [s, -1-yo]], np.float64), True, color=c, ec='none'))
+        if blipPrintLimit > 0:
+            blipPrintLimit = blipPrintLimit - 1
+            print("  blip(x={}, y={}, c={}, xo={}, yo={})".format(s, t, c, xo, yo))
+            # print("  blip(x={}, y={}, xrange={}, yrange={}, c={}, xo={}, yo={})".format(s, t, (s-xo, s+xo), (t-yo, t+yo), c, xo, yo))
 
     ## it is an interval
     else:
-        patches.append(mpl.patches.Rectangle((s, t-0.5*yboxfrac), f-s, yboxfrac, color=c, ec='none'))
+        _xy = (s, t-0.5*yboxfrac)
+        _w = f-s
+        _h = yboxfrac
+        _c = c
+        if c == 'rainbow':
+            _c = next(settings.colorit)
+        if c == 'sequence':
+            _c = settings.cmsequence[threadColorIx[t]]
+            threadColorIx[t] = (threadColorIx[t] + 1) % settings.numColors
+        elif c == 'label':
+            _c = settings.cmsequence[int(l) % settings.numColors]
 
+        patches.append(mpl.patches.Rectangle(_xy, _w, _h, color=_c, ec='none'))
+        if intervalPrintLimit > 0:
+            intervalPrintLimit = intervalPrintLimit - 1
+            print("  rectangle(xy={}, w={}, h={}, c={}))".format(_xy, _w, _h, _c))
+
+
+
+##
+## draw the patches
+##
 ax.add_collection(PatchCollection(patches, match_original=True, zorder=0))
 ax.add_collection(PatchCollection(patches_over, match_original=True, zorder=1))
 
-# plt.hlines(ThreadCol, StartCol, FinishCol, ColorCol, linewidth=lwidth)
+## drawing the following as 0 linewidth (invisibly) appears to set axes properly for add_collection method above
+#  (this wasn't needed in python v2 evidently but is in v3)
+plt.hlines([-1, miny, maxy], [minx, minx, minx], [maxx, maxx, maxx], ['black', 'black', 'black'], linewidth=0)
+# plt.hlines(ThreadCol, StartCol, FinishCol, ColorCol, linewidth=0) ## inefficient alternative
 
+
+
+
+
+
+
+
+
+
+## some incomplete work on supporting annotations on intervals/blips
 if False:
     for e, t, s, f, c, l in zip(EventCol, ThreadCol, StartCol, FinishCol, ColorCol, LabelCol):
         if l != None and l != "" and t < 10:
@@ -390,12 +522,17 @@ if False:
 
 split()
 
+
+
+##
+## render the result either interactively or to a file
+##
 plt.tight_layout()
 
 if SHOW:
     print("showing object")
     plt.show()
-elif settings.outfile.endswith(".pickle"):
+elif settings.outfile.endswith(".pickle"): ## evidently non-working attempt to export pickle serialized object data for the matplotlib figure
     print("saving pickle object %s\n" % settings.outfile)
     f = file(settings.outfile, 'w')
     pickle.dump(fig, f)

@@ -1,4 +1,4 @@
-/* 
+/*
  * File:   intlf.h
  * Author: Trevor Brown
  *
@@ -51,7 +51,8 @@ typedef enum {
 } Flag;
 
 template <typename skey_t, typename sval_t>
-struct node_t {
+class node_t {
+public:
     volatile skey_t markAndKey; //format <markFlag,address>
     node_t<skey_t, sval_t> * volatile child[2]; //format <address,NullBit,InjectFlag,DeleteFlag,PromoteFlag>
     volatile unsigned long readyToReplace;
@@ -59,30 +60,34 @@ struct node_t {
 };
 
 template <typename skey_t, typename sval_t>
-struct edge {
+class edge_t {
+public:
     node_t<skey_t, sval_t> * parent;
     node_t<skey_t, sval_t> * child;
     int which;
 };
 
 template <typename skey_t, typename sval_t>
-struct seekRecord {
-    edge<skey_t, sval_t> lastEdge;
-    edge<skey_t, sval_t> pLastEdge;
-    edge<skey_t, sval_t> injectionEdge;
+class seekRecord {
+public:
+    edge_t<skey_t, sval_t> lastEdge;
+    edge_t<skey_t, sval_t> pLastEdge;
+    edge_t<skey_t, sval_t> injectionEdge;
 };
 
 template <typename skey_t, typename sval_t>
-struct anchorRecord {
+class AnchorRecord {
+public:
     node_t<skey_t, sval_t> * node;
     skey_t key;
 };
 
 template <typename skey_t, typename sval_t>
-struct stateRecord {
+class stateRecord {
+public:
     int depth;
-    edge<skey_t, sval_t> targetEdge;
-    edge<skey_t, sval_t> pTargetEdge;
+    edge_t<skey_t, sval_t> targetEdge;
+    edge_t<skey_t, sval_t> pTargetEdge;
     skey_t targetKey;
     skey_t currentKey;
     //sval_t oldValue;
@@ -92,15 +97,16 @@ struct stateRecord {
 };
 
 template <typename skey_t, typename sval_t>
-struct tArgs {
+class tArgs {
+public:
     int tid;
     node_t<skey_t, sval_t> * newNode;
     bool isNewNodeAvailable;
     seekRecord<skey_t, sval_t> targetRecord;
     seekRecord<skey_t, sval_t> pSeekRecord;
     stateRecord<skey_t, sval_t> myState;
-    struct anchorRecord<skey_t, sval_t> anchorRecord;
-    struct anchorRecord<skey_t, sval_t> pAnchorRecord;
+    AnchorRecord<skey_t, sval_t> anchorRecord;
+    AnchorRecord<skey_t, sval_t> pAnchorRecord;
 };
 
 template <typename skey_t, typename sval_t, class RecMgr>
@@ -123,8 +129,8 @@ PAD;
     int init[MAX_THREADS_POW2] = {0,}; // this suffers from false sharing, but is only touched once per thread! so no worries.
 PAD;
 
-    void populateEdge(edge<skey_t, sval_t>* e, node_t<skey_t, sval_t> * parent, node_t<skey_t, sval_t> * child, int which);
-    void copyEdge(edge<skey_t, sval_t>* d, edge<skey_t, sval_t>* s);
+    void populateEdge(edge_t<skey_t, sval_t>* e, node_t<skey_t, sval_t> * parent, node_t<skey_t, sval_t> * child, int which);
+    void copyEdge(edge_t<skey_t, sval_t>* d, edge_t<skey_t, sval_t>* s);
     void copySeekRecord(seekRecord<skey_t, sval_t>* d, seekRecord<skey_t, sval_t>* s);
     node_t<skey_t, sval_t> * newLeafNode(tArgs<skey_t, sval_t>*, skey_t key, sval_t value);
     void seek(tArgs<skey_t, sval_t>*, skey_t, seekRecord<skey_t, sval_t>*);
@@ -136,13 +142,13 @@ PAD;
     void removeSuccessor(tArgs<skey_t, sval_t>*, stateRecord<skey_t, sval_t>*);
     bool cleanup(tArgs<skey_t, sval_t>*, stateRecord<skey_t, sval_t>*);
     bool markChildEdge(tArgs<skey_t, sval_t>*, stateRecord<skey_t, sval_t>*, bool);
-    void helpTargetNode(tArgs<skey_t, sval_t>*, edge<skey_t, sval_t>*, int);
-    void helpSuccessorNode(tArgs<skey_t, sval_t>*, edge<skey_t, sval_t>*, int);
+    void helpTargetNode(tArgs<skey_t, sval_t>*, edge_t<skey_t, sval_t>*, int);
+    void helpSuccessorNode(tArgs<skey_t, sval_t>*, edge_t<skey_t, sval_t>*, int);
     node_t<skey_t, sval_t> * simpleSeek(skey_t key, seekRecord<skey_t, sval_t>* s);
     sval_t search(tArgs<skey_t, sval_t>* t, skey_t key);
     sval_t lf_insert(tArgs<skey_t, sval_t>* t, skey_t key, sval_t value);
     bool lf_remove(tArgs<skey_t, sval_t>* t, skey_t key);
-    
+
 public:
 
     intlf(const int _NUM_THREADS, const skey_t& _KEY_MIN, const skey_t& _KEY_MAX, const sval_t& _VALUE_RESERVED, unsigned int id)
@@ -151,9 +157,9 @@ public:
         initThread(tid);
 
         recmgr->endOp(tid); // enter an initial quiescent state.
-        tArgs<skey_t, sval_t> args = {0}; 
+        tArgs<skey_t, sval_t> args = {0};
         args.tid = tid;
-        
+
         R = newLeafNode(&args, KEY_MAX, NO_VALUE);
         R->child[RIGHT] = newLeafNode(&args, KEY_MAX, NO_VALUE);
         S = R->child[RIGHT];
@@ -181,27 +187,27 @@ public:
     node_t<skey_t, sval_t> * get_root() {
         return R;
     }
-    
+
     RecMgr * debugGetRecMgr() {
         return recmgr;
     }
 
     sval_t insert(const int tid, skey_t key, sval_t item) {
         assert(key < KEY_MAX);
-        tArgs<skey_t, sval_t> args = {0}; 
+        tArgs<skey_t, sval_t> args = {0};
         args.tid = tid;
         return lf_insert(&args, key, item);
     }
 
     bool remove(const int tid, skey_t key) {
         assert(key < KEY_MAX);
-        tArgs<skey_t, sval_t> args = {0}; 
+        tArgs<skey_t, sval_t> args = {0};
         args.tid = tid;
         return lf_remove(&args, key);
     }
 
     sval_t find(const int tid, skey_t key) {
-        tArgs<skey_t, sval_t> args = {0}; 
+        tArgs<skey_t, sval_t> args = {0};
         args.tid = tid;
         return search(&args, key);
     }
@@ -220,14 +226,14 @@ inline node_t<skey_t, sval_t> * intlf<skey_t, sval_t, RecMgr>::newLeafNode(tArgs
 }
 
 template <typename skey_t, typename sval_t, class RecMgr>
-void intlf<skey_t, sval_t, RecMgr>::populateEdge(struct edge<skey_t, sval_t>* e, node_t<skey_t, sval_t> * parent, node_t<skey_t, sval_t> * child, int which) {
+void intlf<skey_t, sval_t, RecMgr>::populateEdge(edge_t<skey_t, sval_t>* e, node_t<skey_t, sval_t> * parent, node_t<skey_t, sval_t> * child, int which) {
     e->parent = parent;
     e->child = child;
     e->which = which;
 }
 
 template <typename skey_t, typename sval_t, class RecMgr>
-void intlf<skey_t, sval_t, RecMgr>::copyEdge(struct edge<skey_t, sval_t>* d, struct edge<skey_t, sval_t>* s) {
+void intlf<skey_t, sval_t, RecMgr>::copyEdge(edge_t<skey_t, sval_t>* d, edge_t<skey_t, sval_t>* s) {
     d->parent = s->parent;
     d->child = s->child;
     d->which = s->which;
@@ -242,11 +248,11 @@ void intlf<skey_t, sval_t, RecMgr>::copySeekRecord(seekRecord<skey_t, sval_t>* d
 
 template <typename skey_t, typename sval_t, class RecMgr>
 void intlf<skey_t, sval_t, RecMgr>::seek(tArgs<skey_t, sval_t>* t, skey_t key, seekRecord<skey_t, sval_t>* s) {
-    anchorRecord<skey_t, sval_t>* pAnchorRecord;
-    anchorRecord<skey_t, sval_t>* anchorRecord;
+    AnchorRecord<skey_t, sval_t>* pAnchorRecord;
+    AnchorRecord<skey_t, sval_t>* anchorRecord;
 
-    struct edge<skey_t, sval_t> pLastEdge;
-    struct edge<skey_t, sval_t> lastEdge;
+    edge_t<skey_t, sval_t> pLastEdge;
+    edge_t<skey_t, sval_t> lastEdge;
 
     node_t<skey_t, sval_t> * curr;
     node_t<skey_t, sval_t> * next;
@@ -372,7 +378,7 @@ template <typename skey_t, typename sval_t, class RecMgr>
 void intlf<skey_t, sval_t, RecMgr>::inject(tArgs<skey_t, sval_t>* t, stateRecord<skey_t, sval_t>* state) {
     node_t<skey_t, sval_t> * parent;
     node_t<skey_t, sval_t> * node;
-    struct edge<skey_t, sval_t> targetEdge;
+    edge_t<skey_t, sval_t> targetEdge;
     int which;
     bool result;
     bool i;
@@ -416,7 +422,7 @@ void intlf<skey_t, sval_t, RecMgr>::inject(tArgs<skey_t, sval_t>* t, stateRecord
 template <typename skey_t, typename sval_t, class RecMgr>
 bool intlf<skey_t, sval_t, RecMgr>::markChildEdge(tArgs<skey_t, sval_t>* t, stateRecord<skey_t, sval_t>* state, bool which) {
     node_t<skey_t, sval_t> * node;
-    struct edge<skey_t, sval_t> edge;
+    edge_t<skey_t, sval_t> edge;
     Flag flag;
     node_t<skey_t, sval_t> * address;
     node_t<skey_t, sval_t> * temp;
@@ -424,7 +430,7 @@ bool intlf<skey_t, sval_t, RecMgr>::markChildEdge(tArgs<skey_t, sval_t>* t, stat
     bool i;
     bool d;
     bool p;
-    struct edge<skey_t, sval_t> helpeeEdge;
+    edge_t<skey_t, sval_t> helpeeEdge;
     node_t<skey_t, sval_t> * oldValue;
     node_t<skey_t, sval_t> * newValue;
     bool result;
@@ -480,8 +486,8 @@ void intlf<skey_t, sval_t, RecMgr>::findSmallest(tArgs<skey_t, sval_t>* t, node_
     node_t<skey_t, sval_t> * left;
     node_t<skey_t, sval_t> * temp;
     bool n;
-    struct edge<skey_t, sval_t> lastEdge;
-    struct edge<skey_t, sval_t> pLastEdge;
+    edge_t<skey_t, sval_t> lastEdge;
+    edge_t<skey_t, sval_t> pLastEdge;
 
     //find the node with the smallest key in the subtree rooted at the right child
     //initialize the variables used in the traversal
@@ -505,7 +511,7 @@ void intlf<skey_t, sval_t, RecMgr>::findSmallest(tArgs<skey_t, sval_t>* t, node_
 
 template <typename skey_t, typename sval_t, class RecMgr>
 void intlf<skey_t, sval_t, RecMgr>::findAndMarkSuccessor(tArgs<skey_t, sval_t>* t, stateRecord<skey_t, sval_t>* state) {
-    struct edge<skey_t, sval_t> successorEdge;
+    edge_t<skey_t, sval_t> successorEdge;
     bool m;
     bool n;
     bool d;
@@ -563,8 +569,8 @@ template <typename skey_t, typename sval_t, class RecMgr>
 void intlf<skey_t, sval_t, RecMgr>::removeSuccessor(tArgs<skey_t, sval_t>* t, stateRecord<skey_t, sval_t>* state) {
     node_t<skey_t, sval_t> * node;
     seekRecord<skey_t, sval_t>* s;
-    struct edge<skey_t, sval_t> successorEdge;
-    struct edge<skey_t, sval_t> pLastEdge;
+    edge_t<skey_t, sval_t> successorEdge;
+    edge_t<skey_t, sval_t> pLastEdge;
     node_t<skey_t, sval_t> * temp;
     node_t<skey_t, sval_t> * right;
     node_t<skey_t, sval_t> * address;
@@ -726,7 +732,7 @@ bool intlf<skey_t, sval_t, RecMgr>::cleanup(tArgs<skey_t, sval_t>* t, stateRecor
 }
 
 template <typename skey_t, typename sval_t, class RecMgr>
-void intlf<skey_t, sval_t, RecMgr>::helpTargetNode(tArgs<skey_t, sval_t>* t, struct edge<skey_t, sval_t>* helpeeEdge, int depth) {
+void intlf<skey_t, sval_t, RecMgr>::helpTargetNode(tArgs<skey_t, sval_t>* t, edge_t<skey_t, sval_t>* helpeeEdge, int depth) {
     // intention flag must be set on the edge
     // obtain new state record and initialize it
     auto state = recmgr->template allocate<stateRecord<skey_t, sval_t>>(t->tid);
@@ -750,7 +756,7 @@ void intlf<skey_t, sval_t, RecMgr>::helpTargetNode(tArgs<skey_t, sval_t>* t, str
 }
 
 template <typename skey_t, typename sval_t, class RecMgr>
-void intlf<skey_t, sval_t, RecMgr>::helpSuccessorNode(tArgs<skey_t, sval_t>* t, struct edge<skey_t, sval_t>* helpeeEdge, int depth) {
+void intlf<skey_t, sval_t, RecMgr>::helpSuccessorNode(tArgs<skey_t, sval_t>* t, edge_t<skey_t, sval_t>* helpeeEdge, int depth) {
     node_t<skey_t, sval_t> * parent;
     node_t<skey_t, sval_t> * node;
     node_t<skey_t, sval_t> * left;
@@ -776,8 +782,8 @@ void intlf<skey_t, sval_t, RecMgr>::helpSuccessorNode(tArgs<skey_t, sval_t>* t, 
 
 template <typename skey_t, typename sval_t, class RecMgr>
 node_t<skey_t, sval_t> * intlf<skey_t, sval_t, RecMgr>::simpleSeek(skey_t key, seekRecord<skey_t, sval_t>* s) {
-    anchorRecord<skey_t, sval_t> pAnchorRecord;
-    anchorRecord<skey_t, sval_t> anchorRecord;
+    AnchorRecord<skey_t, sval_t> pAnchorRecord;
+    AnchorRecord<skey_t, sval_t> anchorRecord;
 
     node_t<skey_t, sval_t> * lastTraversalResult = NULL;
     node_t<skey_t, sval_t> * curr;
@@ -876,7 +882,7 @@ sval_t intlf<skey_t, sval_t, RecMgr>::lf_insert(tArgs<skey_t, sval_t>* t, skey_t
     //std::cout<<"insert "<<key<<std::endl;
     while (true) {
         auto guard = recmgr->getGuard(t->tid);
-        
+
         seek(t, key, &t->targetRecord);
         auto node = t->targetRecord.lastEdge.child;
         auto nKey = getKey(node->markAndKey);
@@ -893,7 +899,7 @@ sval_t intlf<skey_t, sval_t, RecMgr>::lf_insert(tArgs<skey_t, sval_t>* t, skey_t
         } else {
             recmgr->deallocate(t->tid, newNode);
         }
-        
+
         auto temp = node->child[which];
         if (isDFlagSet(temp)) {
             helpTargetNode(t, &t->targetRecord.lastEdge, 1);
@@ -916,7 +922,7 @@ bool intlf<skey_t, sval_t, RecMgr>::lf_remove(tArgs<skey_t, sval_t>* t, skey_t k
 
     while (true) {
         auto guard = recmgr->getGuard(t->tid);
-        
+
         seek(t, myState->currentKey, targetRecord);
         auto targetEdge = targetRecord->lastEdge;
         auto pTargetEdge = targetRecord->pLastEdge;

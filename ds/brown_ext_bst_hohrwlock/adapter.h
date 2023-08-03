@@ -1,5 +1,7 @@
+// THIS IMPLEMENTATION SHOULD NOT BE USED. IT IS UNSTABLE TEST CODE.
+
 /**
- * Implementation of a hand-over-hand locking unbalanced external binary search tree.
+ * Implementation of a hand-over-hand reader/writer locking unbalanced external binary search tree.
  * Trevor Brown, 2018.
  */
 

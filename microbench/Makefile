@@ -43,18 +43,26 @@ else
 	FLAGS += -O3
 endif
 
+## setting this to 0 enables experimental deamortized freeing in the DEBRA memory reclamation algorithm.
+## this can improve performance substantially, especially when using jemalloc or tcmalloc,
+## but it should only be used for data structures and workloads in which, on average,
+## at most one object per data structure operation is allocated.
+##
+debra_orig_free=1
+ifeq ($(debra_orig_free), 1)
+	FLAGS += -DDEBRA_ORIGINAL_FREE
+endif
+
 FLAGS += -DMAX_THREADS_POW2=512
 FLAGS += -DCPU_FREQ_GHZ=2.1 #$(shell ./experiments/get_cpu_ghz.sh)
 FLAGS += -DMEMORY_STATS=if\(1\) -DMEMORY_STATS2=if\(0\)
 FLAGS += -std=c++14 -mcx16 -gdwarf
 FLAGS += -fno-omit-frame-pointer
-# FLAGS += -DCALL_DEBUG_GC
+#FLAGS += -DCALL_DEBUG_GC
 #FLAGS += -DNO_CLEANUP_AFTER_WORKLOAD ### avoid executing data structure destructors, to save teardown time at the end of each trial (useful with massive trees)
 #FLAGS += -DRAPID_RECLAMATION
-# FLAGS += -DPREFILL_INSERTION_ONLY
-FLAGS += -DDEBRA_ORIGINAL_FREE
 #FLAGS += -DMEASURE_REBUILDING_TIME
-# FLAGS += -DMEASURE_TIMELINE_STATS
+#FLAGS += -DMEASURE_TIMELINE_STATS
 FLAGS += -DUSE_TREE_STATS
 #FLAGS += -DOVERRIDE_PRINT_STATS_ON_ERROR
 #FLAGS += -Wno-format

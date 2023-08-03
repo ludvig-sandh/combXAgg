@@ -1,7 +1,7 @@
 #!/bin/bash
 
-if [ "$#" -lt "5" ]; then
-    echo "USAGE: ./do_plot_bw.sh INPUT_FILE OUTPUT_FILE EVENT_SEARCH_STRING COLOR [[EVENT_SEARCH_STRING COLOR] ...]"
+if [ "$#" -lt "4" ]; then
+    echo "USAGE: ./run_advplot.sh INPUT_FILE OUTPUT_FILE EVENT_SEARCH_STRING COLOR [[EVENT_SEARCH_STRING COLOR] ...]"
     exit 1
 fi
 
@@ -23,7 +23,7 @@ cat $fin | grep "timeline_" | cut -d" " -f1 | sed 's/timeline_//' > $ftempa
 cat $fin | grep "timeline_" | cut -d" " -f2- | tr -d "=_a-zA-Z" > $ftempb
 paste -d " " $ftempa $ftempb > $ftempc
 
-python2 ./timeline_advplot.py $ftempc $fout $@
+python ./timeline_advplot.py $ftempc $fout $@
 if [ "$?" -eq "0" ]; then
     echo
     if [ "$fout" != "__show__" ]; then
