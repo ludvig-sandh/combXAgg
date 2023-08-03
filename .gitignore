@@ -46,3 +46,11 @@ _bak
 */to_upload
 */output_tex
 common/papi/a.out
+microbench_experiments/daewoo_thesis/bin_*
+*.nfs*
+microbench/experiments/timelines/daewoo_thesis_debra/data_*
+microbench_experiments/daewoo_thesis/data_*
+data_llheap
+data_llheap_amortized
+rundb_*
+log.compile.*.out
