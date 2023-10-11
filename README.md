@@ -132,3 +132,6 @@ tornado==6.0.4
 traitlets==4.3.3
 wcwidth==0.2.5
 ```
+
+### Adding your data structure to Setbench
+A full video tutorial describing how to add your data structure to Setbench can be found here: https://www.youtube.com/watch?v=5rLq3TkWPW8
