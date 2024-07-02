@@ -11,12 +11,17 @@
 
 #include <iostream>
 #include <csignal>
+#include <set>
+#include <tuple>
+#include <utility>
 #include "errors.h"
 #ifdef USE_TREE_STATS
 #   define TREE_STATS_BYTES_AT_DEPTH
 #   include "tree_stats.h"
 #endif
 #include "ticket_impl.h"
+
+using namespace std;
 
 #define RECORD_MANAGER_T record_manager<Reclaim, Alloc, Pool, node_t<K,V>>
 #define DATA_STRUCTURE_T ticket<K, V, RECORD_MANAGER_T>
@@ -26,6 +31,38 @@ class ds_adapter {
 private:
     const V NO_VALUE;
     DATA_STRUCTURE_T * const ds;
+    set<K> s;
+    K minkey, maxkey;
+
+    tuple<bool, K> validateHelper(node_t<K,V>* node, int depth) {
+        if (s.find(node->key) != s.end()) {
+            assert(false);
+            return make_tuple(false, 0);
+        }
+
+        if (!node->left && !node->right) {
+            s.insert(node->key);
+            cout << "Leaf: " << node->key << endl;
+            return make_tuple(true, node->key);
+        }
+
+        if (!node->left || !node->right) {
+            assert(false);
+            return make_tuple(false, 0);
+        }
+
+        if (node->key <= node->left->key || node->key > node->right->key) {
+            assert(false);
+            return make_tuple(false, 0);
+        }
+
+        bool leftValid, rightValid;
+        int leftSum, rightSum;
+        tie(leftValid, leftSum) = validateHelper(node->left, depth + 1);
+        tie(rightValid, rightSum) = validateHelper(node->right, depth + 1);
+        std::cout << depth << " " << leftSum << " " << rightSum << endl;
+        return make_tuple(leftValid && rightValid, leftSum + rightSum);
+    }
 
 public:
     ds_adapter(const int NUM_THREADS,
@@ -35,7 +72,10 @@ public:
                Random64 * const unused2)
     : NO_VALUE(VALUE_RESERVED)
     , ds(new DATA_STRUCTURE_T(NUM_THREADS, KEY_MIN, KEY_MAX, NO_VALUE, 0 /* unused */))
-    {}
+    {
+        minkey = KEY_MIN;
+        maxkey = KEY_MAX;
+    }
     ~ds_adapter() {
         delete ds;
     }
@@ -74,12 +114,16 @@ public:
         recmgr->printStatus();
     }
     bool validateStructure() {
-        return true;
+        bool valid;
+        K sumOfKeys;
+        tie(valid, sumOfKeys) = validateHelper(ds->getRoot(), 0);
+        cout << sumOfKeys - minkey - maxkey << endl;
+        return valid;
     }
     void printObjectSizes() {
-        std::cout<<"sizes: node="
+        cout<<"sizes: node="
                  <<(sizeof(node_t<K,V>))
-                 <<std::endl;
+                 <<endl;
     }
     // try to clean up: must only be called by a single thread as part of the test harness!
     void debugGCSingleThreaded() {

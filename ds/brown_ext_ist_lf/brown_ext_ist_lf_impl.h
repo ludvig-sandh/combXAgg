@@ -1476,13 +1476,13 @@ void istree<K,V,Interpolate,RecManager>::rebuild(const int tid, Node<K,V> * rebu
 
 template <typename K, typename V, class Interpolate, class RecManager>
 int istree<K,V,Interpolate,RecManager>::interpolationSearch(const int tid, const K& key, Node<K,V> * const node) {
-    __builtin_prefetch(&node->minKey, 1);
-    __builtin_prefetch(&node->maxKey, 1);
+    // __builtin_prefetch(&node->minKey, 1);
+    // __builtin_prefetch(&node->maxKey, 1);
 
     // these next 3 prefetches are shockingly effective... 20% performance boost in some large scale search-only workloads... (reducing L3 cache misses by 2-3 per search...)
-    __builtin_prefetch((node->keyAddr(0)), 1);
-    __builtin_prefetch((node->keyAddr(0))+(8), 1);
-    __builtin_prefetch((node->keyAddr(0))+(16), 1);
+    // __builtin_prefetch((node->keyAddr(0)), 1);
+    // __builtin_prefetch((node->keyAddr(0))+(8), 1);
+    // __builtin_prefetch((node->keyAddr(0))+(16), 1);
 
     auto deg = node->degree;
 
@@ -1507,9 +1507,9 @@ int istree<K,V,Interpolate,RecManager>::interpolationSearch(const int tid, const
     // assert: minKey <= key < maxKey
     int ix = (numKeys * (key - minKey) / (maxKey - minKey));
 
-    __builtin_prefetch((node->keyAddr(0))+(ix-8), 1);                           // prefetch approximate key location
-    __builtin_prefetch((node->keyAddr(0))+(ix), 1);                             // prefetch approximate key location
-    __builtin_prefetch((node->keyAddr(0))+(ix+8), 1);                           // prefetch approximate key location
+    // __builtin_prefetch((node->keyAddr(0))+(ix-8), 1);                           // prefetch approximate key location
+    // __builtin_prefetch((node->keyAddr(0))+(ix), 1);                             // prefetch approximate key location
+    // __builtin_prefetch((node->keyAddr(0))+(ix+8), 1);                           // prefetch approximate key location
 
     const K& ixKey = node->key(ix);
 //    std::cout<<"key="<<key<<" minKey="<<minKey<<" maxKey="<<maxKey<<" ix="<<ix<<" ixKey="<<ixKey<<std::endl;

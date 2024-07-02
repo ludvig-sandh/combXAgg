@@ -58,10 +58,31 @@ ifeq ($(debra_orig_free), 1)
 	FLAGS += -DDEBRA_ORIGINAL_FREE
 endif
 
+debug_timeline_record_every_deamortized_free=0
+ifeq ($(debug_timeline_record_every_deamortized_free), 1)
+	FLAGS += -DTIMELINE_RECORD_EVERY_DEAMORTIZED_FREE
+endif
+
+## setting this to 0 enables experimental deamortized freeing in the DEBRA memory reclamation algorithm.
+## this can improve performance substantially, especially when using jemalloc or tcmalloc,
+## but it should only be used for data structures and workloads in which, on average,
+## at most one object per data structure operation is allocated.
+##
+debra_orig_free=1
+ifeq ($(debra_orig_free), 1)
+	FLAGS += -DDEBRA_ORIGINAL_FREE
+endif
+
+skip_validation=0
+ifeq ($(skip_validation), 1)
+	FLAGS += -DSKIP_VALIDATION
+endif
+
+# FLAGS += -march=native
 FLAGS += -DMAX_THREADS_POW2=512
 FLAGS += -DCPU_FREQ_GHZ=2.1 #$(shell ./experiments/get_cpu_ghz.sh)
 FLAGS += -DMEMORY_STATS=if\(1\) -DMEMORY_STATS2=if\(0\)
-FLAGS += -std=c++14 -mcx16 #-gdwarf
+FLAGS += -std=c++17 -mcx16 -gdwarf
 FLAGS += -fno-omit-frame-pointer
 #FLAGS += -DCALL_DEBUG_GC
 #FLAGS += -DNO_CLEANUP_AFTER_WORKLOAD ### avoid executing data structure destructors, to save teardown time at the end of each trial (useful with massive trees)
@@ -177,11 +198,20 @@ $(1).$(2): dir_guard
 	$(GPP) ./main.cpp -o $(bin_dir)/$(1).$(2) -I../ds/$(1) -DDS_TYPENAME=$(1) -DRECLAIM_TYPE=$(2) $(FLAGS) $(LDFLAGS)
 ds-reclaim: $(1).$(2)
 endef
+define create-target-openbwtree-ds-reclaim =
+$(1).$(2): dir_guard
+	$(GPP) ./main.cpp ../ds/$(1)/bwtree.cpp -o $(bin_dir)/$(1).$(2) -I../ds/$(1) -DDS_TYPENAME=$(1) -DRECLAIM_TYPE=$(2) $(FLAGS) -Wno-invalid-offsetof $(LDFLAGS) -latomic
+ds-reclaim: $(1).$(2)
+endef
 $(foreach ds,$(DATA_STRUCTURES), \
 	$(foreach reclaim,$(RECLAIMERS), \
-		$(eval $(call create-target-ds-reclaim,$(ds),$(reclaim))) \
+		$(if $(filter wang_openbwtree,$(ds)), \
+			$(eval $(call create-target-openbwtree-ds-reclaim,$(ds),$(reclaim))), \
+			$(eval $(call create-target-ds-reclaim,$(ds),$(reclaim))) \
+		) \
 	) \
 )
+
 
 ## create build targets for combinations of DATA_STRUCTURES, RECLAIMERS and POOLS
 ## and add them to a combined target: "ds-reclaim-pool"
@@ -190,10 +220,18 @@ _$(1).$(2).p$(3): dir_guard
 	$(GPP) ./main.cpp -o $(bin_dir)/$(1).$(2).p$(3) -I../ds/$(1) -DDS_TYPENAME=$(1) -DRECLAIM_TYPE=$(2) -DPOOL_TYPE=$(3) $(FLAGS) $(LDFLAGS)
 ds-reclaim-pool: _$(1).$(2).p$(3)
 endef
+define create-target-openbwtree-ds-reclaim-pool =
+_$(1).$(2).p$(3): dir_guard
+	$(GPP) ./main.cpp ../ds/$(1)/bwtree.cpp -o $(bin_dir)/$(1).$(2).p$(3) -I../ds/$(1) -DDS_TYPENAME=$(1) -DRECLAIM_TYPE=$(2) -DPOOL_TYPE=$(3) $(FLAGS) -Wno-invalid-offsetof $(LDFLAGS) -latomic
+ds-reclaim-pool: _$(1).$(2).p$(3)
+endef
 $(foreach ds,$(DATA_STRUCTURES), \
 	$(foreach reclaim,$(RECLAIMERS), \
 		$(foreach pool,$(POOLS), \
-			$(eval $(call create-target-ds-reclaim-pool,$(ds),$(reclaim),$(pool))) \
+			$(if $(filter wang_openbwtree,$(ds)), \
+				$(eval $(call create-target-openbwtree-ds-reclaim-pool,$(ds),$(reclaim),$(pool))), \
+				$(eval $(call create-target-ds-reclaim-pool,$(ds),$(reclaim),$(pool))) \
+			) \
 		) \
 	) \
 )
@@ -206,12 +244,20 @@ _$(1).$(2).$(3).p$(4): dir_guard
 	$(GPP) ./main.cpp -o $(bin_dir)/$(1).$(2).$(3).p$(4) -I../ds/$(1) -DDS_TYPENAME=$(1) -DALLOC_TYPE=$(2) -DRECLAIM_TYPE=$(3) -DPOOL_TYPE=$(4) $(FLAGS) $(LDFLAGS)
 all: _$(1).$(2).$(3).p$(4)
 endef
+define create-target-openbwtree-ds-alloc-reclaim-pool =
+_$(1).$(2).$(3).p$(4): dir_guard
+	$(GPP) ./main.cpp ../ds/$(1)/bwtree.cpp -o $(bin_dir)/$(1).$(2).$(3).p$(4) -I../ds/$(1) -DDS_TYPENAME=$(1) -DALLOC_TYPE=$(2) -DRECLAIM_TYPE=$(3) -DPOOL_TYPE=$(4) $(FLAGS) -Wno-invalid-offsetof $(LDFLAGS) -latomic
+all: _$(1).$(2).$(3).p$(4)
+endef
 
 $(foreach ds,$(DATA_STRUCTURES), \
 	$(foreach alloc,$(ALLOCATORS), \
 		$(foreach reclaim,$(RECLAIMERS), \
 			$(foreach pool,$(POOLS), \
-				$(eval $(call create-target-ds-alloc-reclaim-pool,$(ds),$(alloc),$(reclaim),$(pool))) \
+				$(if $(filter wang_openbwtree,$(ds)), \
+					$(eval $(call create-target-openbwtree-ds-alloc-reclaim-pool,$(ds),$(alloc),$(reclaim),$(pool))), \
+					$(eval $(call create-target-ds-alloc-reclaim-pool,$(ds),$(alloc),$(reclaim),$(pool))) \
+				) \
 			) \
 		) \
 	) \

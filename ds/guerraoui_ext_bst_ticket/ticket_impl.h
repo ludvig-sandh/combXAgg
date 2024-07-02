@@ -170,6 +170,10 @@ public:
         delete recmgr;
     }
 
+    node_t<skey_t, sval_t> * getRoot() {
+        return root;
+    }
+
     void initThread(const int tid) {
         if (init[tid]) return;
         else init[tid] = !init[tid];

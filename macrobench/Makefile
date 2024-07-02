@@ -28,12 +28,14 @@ workload=TPCC
 data_structure_name=brown_ext_abtree_lf
 data_structure_opts=
 data_structure_path=../ds/$(data_structure_name)
+extra_src_dirs=
 
 .SUFFIXES: .o .cpp .h
 bindir=bin
 odir=$(bindir)/OBJS_$(workload)_$(data_structure_name)/macrobench
 SRC_DIRS = ./ ./benchmarks/ ./concurrency_control/ ./storage/ ./storage/index/ ./system/
 #SRC_DIRS += ../common/rlu/
+SRC_DIRS += $(extra_src_dirs)
 CFLAGS += -I../ $(patsubst %,-I%,$(SRC_DIRS)) `find ../common -type d | sed s/^/-I/`
 
 #CFLAGS += -DSKIP_PERMUTATIONS

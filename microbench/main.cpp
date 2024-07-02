@@ -80,6 +80,7 @@ int PREFILL_THREADS;
 int WORK_THREADS;
 int RQ_THREADS;
 int TOTAL_THREADS;
+double ZIPF_PARAM;
 PrefillType PREFILL_TYPE;
 int PREFILL_HYBRID_MIN_MS;
 int PREFILL_HYBRID_MAX_MS;
@@ -257,7 +258,7 @@ GSTATS_DECLARE_STATS_OBJECT(MAX_THREADS_POW2);
 #endif
 
 enum KeyGeneratorDistribution {
-    UNIFORM, ZIPF
+    UNIFORM, ZIPF, ZIPFFAST
 };
 
 template <class KeyGenT>
@@ -287,7 +288,12 @@ struct globals_t {
     DS_ADAPTER_T * dsAdapter; // the data structure
     PAD;
     KeyGeneratorZipfData * keygenZipfData;
+    ZipfRejectionInversionSamplerData * keygenZipfFastData;
     KeyGenT * keygens[MAX_THREADS_POW2];
+    PAD;
+    // We want to prefill with uniform because  Zipf generation is slow for large key ranges (and either way the
+    // probability of a given key being in the data structure is 50%).
+    KeyGeneratorUniform<test_type> * prefillKeygens[MAX_THREADS_POW2];
     PAD;
     Random64 rngs[MAX_THREADS_POW2]; // create per-thread random number generators (padded to avoid false sharing)
 //    PAD; // not needed because of padding at the end of rngs
@@ -308,16 +314,29 @@ struct globals_t {
     {
         debug_print = 0;
         keygenZipfData = NULL;
+        keygenZipfFastData = NULL;
         srand(time(0));
         for (int i=0;i<MAX_THREADS_POW2;++i) {
             rngs[i].setSeed(rand());
         }
+
+        for (int i=0;i<MAX_THREADS_POW2;++i) {
+            prefillKeygens[i] = new KeyGeneratorUniform<test_type>(&rngs[i], maxkeyToGenerate);
+        }
+
         switch (distribution) {
             case ZIPF: {
-                double zipfTheta = 0.5;
-                keygenZipfData = new KeyGeneratorZipfData(maxkeyToGenerate, zipfTheta);
+                keygenZipfData = new KeyGeneratorZipfData(maxkeyToGenerate, ZIPF_PARAM);
+                #pragma omp parallel for
                 for (int i=0;i<MAX_THREADS_POW2;++i) {
                     keygens[i] = (KeyGenT *) (new KeyGeneratorZipf<test_type>(keygenZipfData, &rngs[i]));
+                }
+            } break;
+            case ZIPFFAST: {
+                keygenZipfFastData = new ZipfRejectionInversionSamplerData(maxkeyToGenerate);
+                #pragma omp parallel for
+                for (int i=0;i<MAX_THREADS_POW2;++i) {
+                    keygens[i] = (KeyGenT *) (new ZipfRejectionInversionSampler(keygenZipfFastData, ZIPF_PARAM, &rngs[i]));
                 }
             } break;
             case UNIFORM: {
@@ -346,9 +365,11 @@ struct globals_t {
     }
     ~globals_t() {
         for (int i=0;i<MAX_THREADS_POW2;++i) {
+            delete prefillKeygens[i];
             if (keygens[i]) delete keygens[i];
         }
         if (keygenZipfData) delete keygenZipfData;
+        if (keygenZipfFastData) delete keygenZipfFastData;
     }
 };
 
@@ -434,7 +455,7 @@ template <class GlobalsT>
 void thread_prefill_with_updates(GlobalsT * g, int __tid) {
     THREAD_PREFILL_PRE;
     while (!g->done) {
-        test_type key = g->keygens[tid]->next();
+        test_type key = g->prefillKeygens[tid]->next();
         double op = g->rngs[tid].next(100000000) / 1000000.;
         if (op < insProbability) {
             if (g->debug_print) printf("inserting %lld\n", key);
@@ -485,7 +506,7 @@ void prefillInsert(GlobalsT * g, int64_t expectedSize) {
 
         #pragma omp for
         for (size_t i=0;i<expectedSize;++i) {
-            test_type key = g->keygens[tid]->next();
+            test_type key = g->prefillKeygens[tid]->next();
             //test_type key = g->rngs[tid].next(MAXKEY) + 1;
             GSTATS_ADD(tid, num_inserts, 1);
             if (g->dsAdapter->INSERT_FUNC(tid, key, KEY_TO_VALUE(key)) == g->dsAdapter->getNoValue()) {
@@ -759,7 +780,7 @@ size_t * prefillArray(GlobalsT * g, int64_t expectedSize) {
         #else
             const int tid = 0;
         #endif
-        test_type key = g->keygens[tid]->next();
+        test_type key = g->prefillKeygens[tid]->next();
         //auto key = g->rngs[tid].next(MAXKEY) + 1;
         if (__sync_bool_compare_and_swap(&present[key], DOES_NOT_EXIST, key)) {
             GSTATS_ADD(tid, key_checksum, key);
@@ -844,6 +865,7 @@ void createAndPrefillDataStructure(GlobalsT * g, int64_t expectedSize) {
 
 template <class GlobalsT>
 void trial(GlobalsT * g) {
+    using namespace std::chrono;
     papi_init_program(TOTAL_THREADS);
 
     // create the actual data structure and prefill it to match the expected steady state
@@ -924,12 +946,11 @@ void trial(GlobalsT * g) {
     COUTATOMIC(std::endl);
 
     const long MAX_NAPPING_MILLIS = (MAXKEY > 5e7 ? 120000 : 30000);
-    // g->elapsedMillis = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - g->startTime).count();
-    g->elapsedMillis = std::chrono::duration_cast<std::chrono::milliseconds>(g->endTime - g->startTime).count();
+    g->elapsedMillis = duration_cast<milliseconds>(g->endTime - g->startTime).count();
     g->elapsedMillisNapping = 0;
     while (g->running > 0 && g->elapsedMillisNapping < MAX_NAPPING_MILLIS) {
         nanosleep(&tsNap, NULL);
-        g->elapsedMillisNapping = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - g->startTime).count() - g->elapsedMillis;
+        g->elapsedMillisNapping = duration_cast<milliseconds>(high_resolution_clock::now() - g->startTime).count() - g->elapsedMillis;
     }
 
     if (g->running > 0) {
@@ -1034,6 +1055,7 @@ void printOutput(GlobalsT * g) {
     }
 #endif
 
+#if !defined SKIP_VALIDATION
     if (g->dsAdapter->validateStructure()) {
         std::cout<<"Structural validation OK."<<std::endl;
     } else {
@@ -1041,6 +1063,7 @@ void printOutput(GlobalsT * g) {
         printExecutionTime(g);
         exit(-1);
     }
+#endif
 
     long long totalAll = 0;
 
@@ -1253,7 +1276,11 @@ int main(int argc, char** argv) {
         } else if (strcmp(argv[i], "-prefillsize") == 0) {
             DESIRED_PREFILL_SIZE = atol(argv[++i]);
         } else if (strcmp(argv[i], "-dist-zipf") == 0) {
+            ZIPF_PARAM = atof(argv[++i]);
             distribution = KeyGeneratorDistribution::ZIPF;
+        } else if (strcmp(argv[i], "-dist-zipf-fast") == 0) {
+            ZIPF_PARAM = atof(argv[++i]);
+            distribution = KeyGeneratorDistribution::ZIPFFAST;
         } else if (strcmp(argv[i], "-dist-uniform") == 0) {
             distribution = KeyGeneratorDistribution::UNIFORM; // default behaviour
         } else if (strcmp(argv[i], "-t") == 0) {
@@ -1302,6 +1329,9 @@ int main(int argc, char** argv) {
         } break;
         case ZIPF: {
             main_continued_with_globals(new globals_t<KeyGeneratorZipf<test_type>>(MAXKEY, distribution));
+        } break;
+        case ZIPFFAST: {
+            main_continued_with_globals(new globals_t<ZipfRejectionInversionSampler>(MAXKEY, distribution));
         } break;
         default: {
             setbench_error("invalid case");
