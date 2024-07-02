@@ -106,6 +106,7 @@ for free in immediate ; do
                         cd ..
 
                         python ./timeline_advplot_light.py $timelinedata $plotfile "$suptitle" "$title" rotateEpochBags sequence blip_advanceEpoch blue
+                        imgcatr $plotfile
 
                         # ## zip timeline_data file (to preserve it without occupying too much space)
                         # zip $timelinezip $timelinedata
@@ -118,6 +119,7 @@ for free in immediate ; do
                     line=$(cat "$outfile" | grep average_garbage_in_epoch_by_index | tail -1)
                     echo "$line" | cut -d"=" -f2 | tr " " "\n" | awk '{print NR, $1}' \
                         | plotline.py -o $stripfile --scalefactor $threads --fontsize=22 --heightinches=3.75 --x-title "epoch number" --y-title "garbage nodes" --lightmode --trim-prefix-zeros
+                    imgcatr $stripfile
 
                 done
             done

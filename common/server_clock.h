@@ -60,8 +60,10 @@ timespec getUptimeTimespec() {
 #define printUptimeStampForPERF(label) { \
     SOFTWARE_BARRIER; \
     timespec ___currts = getUptimeTimespec(); \
+    uint64_t ___currclock = get_server_clock(); \
     SOFTWARE_BARRIER; \
     printf("REALTIME_%s_PERF_FORMAT=%ld%s%ld\n", (label), ___currts.tv_sec, ".", ___currts.tv_nsec); \
+    printf("REALTIME_%s_GET_SERVER_CLOCK=%lu\n", (label), (___currclock)); \
 }
 
 //class ClockSplitter {
@@ -102,7 +104,7 @@ timespec getUptimeTimespec() {
     volatile bool ___timeline_use = 0;
     PAD;
     #ifndef ___MIN_INTERVAL_DURATION
-    #   define ___MIN_INTERVAL_DURATION 0
+    #   define ___MIN_INTERVAL_DURATION 0.1
     #endif
     #define TIMELINE_BLIP(tid, name) { \
         if (___timeline_use) { \

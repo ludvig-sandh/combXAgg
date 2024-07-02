@@ -12,8 +12,8 @@ SCRIPTPATH="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 export PATH=$SCRIPTPATH/../../../../tools:$SCRIPTPATH:$PATH
 
 for reclaimer in token1 token2 token3 token4 ; do
-    for allocator in jemalloc mimalloc ; do
-        for threads in 48 96 192 240 ; do
+    for allocator in jemalloc ; do
+        for threads in 192 ; do
             for numactl in interleave ; do
                 for pinning in yes ; do
                     if [ "$threads" == "240" ] ; then pinning=no ; fi ## cannot pin when oversubscribing (with current implementation of setbench anyway)
@@ -71,15 +71,16 @@ for reclaimer in token1 token2 token3 token4 ; do
                     ## plot timeline
                     cd $plotdir
 
-                    ## assuming timeline data is zipped for space reasons... (delete after)
+                    # ## assuming timeline data is zipped for space reasons... (delete after)
                     cd data
                     unzip -oj $timelinezip
                     cd ..
 
                     python ./timeline_advplot_light.py $timelinedata $plotfile "$suptitle" "$title" rotateEpochBags sequence blip_advanceEpoch blue
+                    imgcatr $plotfile
 
-                    # ## zip timeline_data file (to preserve it without occupying too much space)
-                    # zip $timelinezip $timelinedata
+                    # # ## zip timeline_data file (to preserve it without occupying too much space)
+                    # # zip $timelinezip $timelinedata
                     rm $timelinedata
 
                     # exit 1
@@ -88,6 +89,7 @@ for reclaimer in token1 token2 token3 token4 ; do
                     line=$(cat "$outfile" | grep average_garbage_in_epoch_by_index | tail -1)
                     echo "$line" | cut -d"=" -f2 | tr " " "\n" | awk '{print NR, $1}' \
                         | plotline.py -o $stripfile  --scalefactor 192 --fontsize=22 --heightinches=3.75 --x-title "epoch number" --y-title "garbage nodes" --lightmode --trim-prefix-zeros
+                    imgcatr $stripfile
 
                 done
             done

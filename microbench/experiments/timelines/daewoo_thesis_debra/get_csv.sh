@@ -21,7 +21,9 @@ for f in $(ls data/free*.txt) ; do
         freepcnt=$(grep '\[\.\] syscall@plt' $f | tr -d " " | cut -d"%" -f1)
     fi
 
+    flushpcnt=$(grep '\[\.\] je_tcache_bin_flush_small' $f | tr -d " " | cut -d"%" -f1)
+
     # echo "epochs=$epochs"
     # echo "frees=$frees"
-    (echo -n "$f" | cut -d"/" -f2 | cut -d"." -f1 | tr "_" "," | cut -d"," -f2- | tr -d "\n" ; echo ",$tputmil,$freepcnt,$epochs,$reclamationevents,$frees") | grep -v none
+    (echo -n "$f" | cut -d"/" -f2 | cut -d"." -f1 | tr "_" "," | cut -d"," -f2- | tr -d "\n" ; echo ",$tputmil,$freepcnt,$epochs,$reclamationevents,$frees,$flushpcnt") | grep -v none
 done

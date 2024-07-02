@@ -13,7 +13,7 @@
 #   define __AND ,
 #endif
 #define GSTATS_HANDLE_STATS(gstats_handle_stat) \
-    gstats_handle_stat(LONG_LONG, key_gen_histogram, 200, { \
+    gstats_handle_stat(LONG_LONG, rebalance_at_depth, 64, { \
             gstats_output_item(PRINT_RAW, SUM, BY_INDEX) \
     }) \
     gstats_handle_stat(LONG_LONG, num_inserts, 1, { \
@@ -58,5 +58,8 @@
             gstats_output_item(PRINT_RAW, SUM, TOTAL) \
     }) \
 
-
 #endif /* GSTATS_OUTPUT_DEFS_H */
+
+//     gstats_handle_stat(LONG_LONG, key_gen_histogram, 200, { \
+//             gstats_output_item(PRINT_RAW, SUM, BY_INDEX) \
+//     })

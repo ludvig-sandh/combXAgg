@@ -52,6 +52,14 @@
 #include "prefetching.h"
 #include "scx_provider.h"
 
+// #define RECORD_REBALANCING_AT_DEPTH
+#ifdef RECORD_REBALANCING_AT_DEPTH
+    #define RECORD_REBALANCE(tid, depth) GSTATS_ADD_IX((tid), rebalance_at_depth, 1, (depth))
+#else
+    #define RECORD_REBALANCE(tid, depth)
+#endif
+
+
 namespace abtree_ns {
 
     #define MAX_NODE_DEPENDENCIES_PER_SCX 4
@@ -483,6 +491,8 @@ int abtree_ns::abtree<DEGREE,K,Compare,RecManager>::rangeQuery(const int tid, co
 template <int DEGREE, typename K, class Compare, class RecManager>
 void* abtree_ns::abtree<DEGREE,K,Compare,RecManager>::doInsert(const int tid, const K& key, void * const value, const bool replace) {
     while (true) {
+        int depth = 0;
+
         /**
          * search
          */
@@ -498,6 +508,9 @@ void* abtree_ns::abtree<DEGREE,K,Compare,RecManager>::doInsert(const int tid, co
             gp = p;
             p = l;
             l = l->ptrs[ixToL];
+#ifdef RECORD_REBALANCING_AT_DEPTH
+        ++depth;
+#endif
         }
 
         /**
@@ -746,6 +759,9 @@ bool abtree_ns::abtree<DEGREE,K,Compare,RecManager>::fixWeightViolation(const in
 
     // try to locate viol, and fix any weight violation at viol
     while (true) {
+#ifdef RECORD_REBALANCING_AT_DEPTH
+        int depth = 0;
+#endif
         const K k = viol->searchKey;
         Node<DEGREE,K> * gp = NULL;
         Node<DEGREE,K> * p = entry;
@@ -758,6 +774,9 @@ bool abtree_ns::abtree<DEGREE,K,Compare,RecManager>::fixWeightViolation(const in
             gp = p;
             p = l;
             l = l->ptrs[ixToL];
+#ifdef RECORD_REBALANCING_AT_DEPTH
+            ++depth;
+#endif
         }
 
         if (l != viol) {
@@ -816,6 +835,8 @@ bool abtree_ns::abtree<DEGREE,K,Compare,RecManager>::fixWeightViolation(const in
             n->weight = true;
 
             if (prov->scxExecute(tid, (void * volatile *) &gp->ptrs[ixToP], p, n)) {
+                RECORD_REBALANCE(tid, depth-2);
+
                 recordmgr->retire(tid, p);
                 recordmgr->retire(tid, l);
                 /**
@@ -886,6 +907,8 @@ bool abtree_ns::abtree<DEGREE,K,Compare,RecManager>::fixWeightViolation(const in
             //       if n will become the root
 
             if (prov->scxExecute(tid, (void * volatile *) &gp->ptrs[ixToP], p, n)) {
+                RECORD_REBALANCE(tid, depth-2);
+
                 recordmgr->retire(tid, p);
                 recordmgr->retire(tid, l);
 
@@ -922,6 +945,9 @@ bool abtree_ns::abtree<DEGREE,K,Compare,RecManager>::fixDegreeViolation(const in
         /**
          * search for viol
          */
+#ifdef RECORD_REBALANCING_AT_DEPTH
+        int depth = 0;
+#endif
         const K k = viol->searchKey;
         Node<DEGREE,K> * gp = NULL;
         Node<DEGREE,K> * p = entry;
@@ -934,6 +960,9 @@ bool abtree_ns::abtree<DEGREE,K,Compare,RecManager>::fixDegreeViolation(const in
             gp = p;
             p = l;
             l = l->ptrs[ixToL];
+#ifdef RECORD_REBALANCING_AT_DEPTH
+            ++depth;
+#endif
         }
 
         if (l != viol) {
@@ -972,6 +1001,11 @@ bool abtree_ns::abtree<DEGREE,K,Compare,RecManager>::fixDegreeViolation(const in
         if (!l->weight) {
             foundWeightViolation = true;
             fixWeightViolation(tid, l);
+        }
+        if (p->size == 1) {
+            return false; // p has only one child, so we cannot do absorbSibling or distribute... must be resolved at a higher level
+            // in theory might want to search for & fix the corresponding degree violation one step above us rather than returning. in practice this choice should tend to be faster...
+            // note: this bug was found because of segfaults found indepedently by Ajay Singh and Pedro Ramalhete.
         }
         if (!s->weight) {
             foundWeightViolation = true;
@@ -1060,6 +1094,8 @@ bool abtree_ns::abtree<DEGREE,K,Compare,RecManager>::fixDegreeViolation(const in
             // if appropriate, we perform RootAbsorb at the same time.
             if (gp == entry && p->getABDegree() == 2) {
                 if (prov->scxExecute(tid, (void * volatile *) &gp->ptrs[ixToP], p, newl)) {
+                    RECORD_REBALANCE(tid, depth-2);
+
                     recordmgr->retire(tid, p);
                     recordmgr->retire(tid, l);
                     recordmgr->retire(tid, s);
@@ -1096,6 +1132,8 @@ bool abtree_ns::abtree<DEGREE,K,Compare,RecManager>::fixDegreeViolation(const in
                 n->weight = true;
 
                 if (prov->scxExecute(tid, (void * volatile *) &gp->ptrs[ixToP], p, n)) {
+                    RECORD_REBALANCE(tid, depth-2);
+
                     recordmgr->retire(tid, p);
                     recordmgr->retire(tid, l);
                     recordmgr->retire(tid, s);
@@ -1200,6 +1238,8 @@ bool abtree_ns::abtree<DEGREE,K,Compare,RecManager>::fixDegreeViolation(const in
             n->weight = true;
 
             if (prov->scxExecute(tid, (void * volatile *) &gp->ptrs[ixToP], p, n)) {
+                RECORD_REBALANCE(tid, depth-2);
+
                 recordmgr->retire(tid, p);
                 recordmgr->retire(tid, l);
                 recordmgr->retire(tid, s);
