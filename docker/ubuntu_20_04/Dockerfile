@@ -36,7 +36,7 @@ RUN apt update && apt install -y \
         && echo alias perf=$(find / -wholename "*-generic/perf") > ~/.bash_aliases
 
 RUN cd root \
-        && git clone https://bitbucket.org/icl/papi.git \
+        && git clone https://github.com/icl-utk-edu/papi.git \
         && cd papi/src \
         && ./configure \
         && make -j \
