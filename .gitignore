@@ -54,3 +54,13 @@ data_llheap
 data_llheap_amortized
 rundb_*
 log.compile.*.out
+lib/libnewmalloc1.so
+lib/libnewmalloc2.so
+lib/libsuper0.so
+lib/libsuper1_old.so
+lib/libsuper1.so
+lib/libsuper2.so
+lib/libsuper3.so
+lib/libsuper4_old.so
+lib/libsuper4.so
+lib/libsuper5_old.so
