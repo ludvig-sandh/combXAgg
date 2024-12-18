@@ -81,14 +81,25 @@ int WORK_THREADS;
 int RQ_THREADS;
 int TOTAL_THREADS;
 double ZIPF_PARAM;
+bool IS_SPARSE = false;
 PrefillType PREFILL_TYPE;
 int PREFILL_HYBRID_MIN_MS;
 int PREFILL_HYBRID_MAX_MS;
 PAD;
 
 #include "globals_extern.h"
-#include "random_xoshiro256p.h"
-// #include "random_fnv1a.h"
+
+#if defined(USE_XOSHIRO256P)
+    #pragma message "Using xoshiro256+ Generator"
+    #include "random_xoshiro256p.h"
+#elif defined(USE_FNV1A)
+    #pragma message "Using FNV1a Generator (don't use this! it's very very bad. see code.)"
+    #include "random_fnv1a.h"
+#else
+    #pragma message "Using xoshiro256++ Generator (default)"
+    #include "random_xoshiro256pp.h"
+#endif
+
 #include "plaf.h"
 #include "binding.h"
 #include "papi_util_impl.h"
@@ -261,7 +272,7 @@ enum KeyGeneratorDistribution {
     UNIFORM, ZIPF, ZIPFFAST
 };
 
-template <class KeyGenT>
+template <class KeyGenT, class PrefillKeyGenT>
 struct globals_t {
     PAD;
     // const
@@ -287,13 +298,9 @@ struct globals_t {
     PAD;
     DS_ADAPTER_T * dsAdapter; // the data structure
     PAD;
-    KeyGeneratorZipfData * keygenZipfData;
-    ZipfRejectionInversionSamplerData * keygenZipfFastData;
     KeyGenT * keygens[MAX_THREADS_POW2];
     PAD;
-    // We want to prefill with uniform because  Zipf generation is slow for large key ranges (and either way the
-    // probability of a given key being in the data structure is 50%).
-    KeyGeneratorUniform<test_type> * prefillKeygens[MAX_THREADS_POW2];
+    PrefillKeyGenT * prefillKeygens[MAX_THREADS_POW2];
     PAD;
     Random64 rngs[MAX_THREADS_POW2]; // create per-thread random number generators (padded to avoid false sharing)
 //    PAD; // not needed because of padding at the end of rngs
@@ -306,47 +313,38 @@ struct globals_t {
     volatile bool debug_print;
     PAD;
 
-    globals_t(size_t maxkeyToGenerate, KeyGeneratorDistribution distribution)
+    globals_t(KeyGeneratorDistribution distribution)
     : NO_VALUE(NULL)
     , KEY_MIN(0) /*std::numeric_limits<test_type>::min()+1)*/
     , KEY_MAX(std::numeric_limits<test_type>::max()-1)
     , PREFILL_INTERVAL_MILLIS(200)
     {
         debug_print = 0;
-        keygenZipfData = NULL;
-        keygenZipfFastData = NULL;
         srand(time(0));
+
         for (int i=0;i<MAX_THREADS_POW2;++i) {
             rngs[i].setSeed(rand());
         }
 
-        for (int i=0;i<MAX_THREADS_POW2;++i) {
-            prefillKeygens[i] = new KeyGeneratorUniform<test_type>(&rngs[i], maxkeyToGenerate);
+        // set up unique keys for sparse variations
+        test_type *uniqueKeys = nullptr;
+        if (IS_SPARSE) {
+            uniqueKeys = generateUniqueKeys<test_type>(MAXKEY, &rngs[0]);
         }
 
-        switch (distribution) {
-            case ZIPF: {
-                keygenZipfData = new KeyGeneratorZipfData(maxkeyToGenerate, ZIPF_PARAM);
-                #pragma omp parallel for
-                for (int i=0;i<MAX_THREADS_POW2;++i) {
-                    keygens[i] = (KeyGenT *) (new KeyGeneratorZipf<test_type>(keygenZipfData, &rngs[i]));
-                }
-            } break;
-            case ZIPFFAST: {
-                keygenZipfFastData = new ZipfRejectionInversionSamplerData(maxkeyToGenerate);
-                #pragma omp parallel for
-                for (int i=0;i<MAX_THREADS_POW2;++i) {
-                    keygens[i] = (KeyGenT *) (new ZipfRejectionInversionSampler(keygenZipfFastData, ZIPF_PARAM, &rngs[i]));
-                }
-            } break;
-            case UNIFORM: {
-                for (int i=0;i<MAX_THREADS_POW2;++i) {
-                    keygens[i] = (KeyGenT *) (new KeyGeneratorUniform<test_type>(&rngs[i], maxkeyToGenerate));
-                }
-            } break;
-            default: {
-                setbench_error("invalid case");
-            } break;
+        // set up distribution data for zipfian distributions
+        void *distData = nullptr;
+        if (distribution == ZIPF) {
+            distData = new KeyGeneratorZipfData(MAXKEY, ZIPF_PARAM);
+        } else if (distribution == ZIPFFAST) {
+            distData = new ZipfRejectionInversionSamplerData(MAXKEY);
+        }
+
+        #pragma omp parallel for
+        for (int i=0;i<MAX_THREADS_POW2;++i) {
+            // obviously use the same set of unique keys for prefill and experiment key generators (if sparse)
+            prefillKeygens[i] = new PrefillKeyGenT(&rngs[i], MAXKEY, ZIPF_PARAM, uniqueKeys, distData);
+            keygens[i] = new KeyGenT(&rngs[i], MAXKEY, ZIPF_PARAM, uniqueKeys, distData);
         }
 
         start = false;
@@ -368,8 +366,6 @@ struct globals_t {
             delete prefillKeygens[i];
             if (keygens[i]) delete keygens[i];
         }
-        if (keygenZipfData) delete keygenZipfData;
-        if (keygenZipfFastData) delete keygenZipfFastData;
     }
 };
 
@@ -1211,9 +1207,9 @@ int main(int argc, char** argv) {
     if (argc == 1) {
         std::cout<<std::endl;
         std::cout<<"Example usage:"<<std::endl;
-        std::cout<<"LD_PRELOAD=/path/to/libjemalloc.so "<<argv[0]<<" -nwork 64 -nprefill 64 -i 5 -d 5 -rq 0 -rqsize 1 -k 2000000 -nrq 0 -t 3000 -pin 0-15,32-47,16-31,48-63"<<std::endl;
+        std::cout<<"LD_PRELOAD=/path/to/libjemalloc.so "<<argv[0]<<" -nwork 64 -nprefill 64 -i 5 -d 5 -rq 0 -rqsize 1 -k 2000000 [-sparse] -nrq 0 -t 3000 -pin 0-15,32-47,16-31,48-63"<<std::endl;
         std::cout<<std::endl;
-        std::cout<<"This command will benchmark the data structure corresponding to this binary with 64 threads repeatedly performing 5% key-inserts and 5% key-deletes and 90% key-searches (and 0% range queries with range query size set to a dummy value of 1 key), on random keys from the key range [0, 2000000), for 3000 ms. The data structure is initially prefilled by 64 threads to contain half of the key range. The -pin argument causes threads to be pinned. The specified thread pinning order is for one particular 64 thread system. (Try running ``lscpu'' and looking at ``NUMA node[0-9]'' for a reasonable pinning order.)"<<std::endl;
+        std::cout<<"This command will benchmark the data structure corresponding to this binary with 64 threads repeatedly performing 5% key-inserts and 5% key-deletes and 90% key-searches (and 0% range queries with range query size set to a dummy value of 1 key), on random keys from the key range [1, 2000000] (or 2000000 random 64-bit keys if -sparse is provided), for 3000 ms. The data structure is initially prefilled by 64 threads to contain half of the key range. The -pin argument causes threads to be pinned. The specified thread pinning order is for one particular 64 thread system. (Try running ``lscpu'' and looking at ``NUMA node[0-9]'' for a reasonable pinning order.)"<<std::endl;
         return 1;
     }
 
@@ -1257,6 +1253,8 @@ int main(int argc, char** argv) {
             if (MAXKEY < 1) {
                 setbench_error("key range cannot contain fewer than 1 key");
             }
+        } else if (strcmp(argv[i], "-sparse") == 0) {
+            IS_SPARSE = true;
         } else if (strcmp(argv[i], "-nrq") == 0) {
             RQ_THREADS = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-nwork") == 0) {
@@ -1312,6 +1310,7 @@ int main(int argc, char** argv) {
     PRINTI(RQ);
     PRINTI(RQSIZE);
     PRINTI(MAXKEY);
+    PRINTI(IS_SPARSE);
     PRINTI(PREFILL_THREADS);
     PRINTI(DESIRED_PREFILL_SIZE);
     PRINTI(TOTAL_THREADS);
@@ -1325,13 +1324,37 @@ int main(int argc, char** argv) {
 
     switch (distribution) {
         case UNIFORM: {
-            main_continued_with_globals(new globals_t<KeyGeneratorUniform<test_type>>(MAXKEY, distribution));
+            if (IS_SPARSE) {
+                main_continued_with_globals(
+                    new globals_t<KeyGeneratorUniform<test_type, true>, KeyGeneratorUniform<test_type, true>>(distribution)
+                );
+            } else {
+                main_continued_with_globals(
+                    new globals_t<KeyGeneratorUniform<test_type, false>, KeyGeneratorUniform<test_type, false>>(distribution)
+                );
+            }
         } break;
         case ZIPF: {
-            main_continued_with_globals(new globals_t<KeyGeneratorZipf<test_type>>(MAXKEY, distribution));
+            if (IS_SPARSE) {
+                main_continued_with_globals(
+                    new globals_t<KeyGeneratorZipf<test_type, true>, KeyGeneratorUniform<test_type, true>>(distribution)
+                );
+            } else {
+                main_continued_with_globals(
+                    new globals_t<KeyGeneratorZipf<test_type, false>, KeyGeneratorUniform<test_type, false>>(distribution)
+                );
+            }
         } break;
         case ZIPFFAST: {
-            main_continued_with_globals(new globals_t<ZipfRejectionInversionSampler>(MAXKEY, distribution));
+            if (IS_SPARSE) {
+                main_continued_with_globals(
+                    new globals_t<ZipfRejectionInversionSampler<test_type, true>, KeyGeneratorUniform<test_type, true>>(distribution)
+                );
+            } else {
+                main_continued_with_globals(
+                    new globals_t<ZipfRejectionInversionSampler<test_type, false>, KeyGeneratorUniform<test_type, false>>(distribution)
+                );
+            }
         } break;
         default: {
             setbench_error("invalid case");

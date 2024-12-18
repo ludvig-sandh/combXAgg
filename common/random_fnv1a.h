@@ -10,6 +10,7 @@
 
 #include "plaf.h"
 
+// note: this is a hash function being used as an RNG and you shouldn't use this. for example, it alternates between even and odd numbers. and every 2^k-th number alternates the k-th bit.
 class Random64 {
 private:
     union {
@@ -46,6 +47,10 @@ public:
         hash *= prime;
         seed = hash;
         return hash;
+    }
+
+    double nextDouble() {
+        return (next() / (double) std::numeric_limits<uint64_t>::max());
     }
 
 };

@@ -9,47 +9,100 @@
 #define KEYGEN_H
 
 #include <algorithm>
-
 #include <cassert>
+#include <unordered_set>
+
 #include "plaf.h"
 
 template <typename K>
+K *generateUniqueKeys(int n, Random64 *rng) {
+    const double stop_coefficient =
+        1.33;  // 1.33*n is the maximum number of iterations needed to generate
+               // n unique keys
+
+    std::unordered_set<K> uniqueKeys;
+    int total_generated = 0;
+
+    while (uniqueKeys.size() < n) {
+        K key = 0;
+        do {
+            key = rng->next();
+        } while (key == 0);  // because +1 might cause overflow
+
+        uniqueKeys.insert(key);
+        total_generated++;
+
+        if (total_generated >= (int)(stop_coefficient * n)) {
+            std::cout
+                << "Error: Could not generate enough unique keys. Exiting."
+                << std::endl;
+            exit(-1);
+        }
+    }
+
+    K *result = new K[n];
+
+    auto it = uniqueKeys.begin();
+    for (int i = 0; i < n; i++, it++) {
+        result[i] = *it;
+    }
+
+    return result;
+}
+
+// Uniform generator
+// If dense, returns a random number in the range [1, n]
+// If sparse returns a random number from n unique keys
+template <typename K, bool is_sparse>
 class KeyGeneratorUniform {
-private:
+   private:
     PAD;
-    Random64 * rng;
-    int maxKey;
+    Random64 *rng;
+    int n;
+    K *uniqueKeys;
     PAD;
-public:
-    KeyGeneratorUniform(Random64 * _rng, int _maxKey) : rng(_rng), maxKey(_maxKey) {}
+
+   public:
+    KeyGeneratorUniform(Random64 *_rng, int _n, double unusedZipfParam,
+                        void *_uniqueKeys, void *unusedDistData)
+        : rng(_rng), n(_n), uniqueKeys((K *)_uniqueKeys) {}
+
     K next() {
-        auto result = 1+rng->next(maxKey);
-        assert((result >= 1) && (result <= maxKey));
-        // GSTATS_ADD_IX(tid, key_gen_histogram, 1, result);
-        return result;
+        if constexpr (is_sparse) {
+            auto result = uniqueKeys[rng->next(n)];
+            assert((result >= 1));
+            return result;
+        } else {
+            auto result = 1 + rng->next(n);
+            assert((result >= 1) && (result <= n));
+            return result;
+        }
     }
 };
 
+// Zipf key generator data
 class KeyGeneratorZipfData {
-public:
+   public:
     PAD;
-    int maxKey;
-    double c = 0; // Normalization constant
-    double* sum_probs; // Pre-calculated sum of probabilities
+    int maxKey;         // can mean numKeys in case of sparse key generation
+    double c = 0;       // Normalization constant
+    double *sum_probs;  // Pre-calculated sum of probabilities
     PAD;
-    KeyGeneratorZipfData(const int _maxKey, const double _alpha) {
-        maxKey = _maxKey;
+
+    KeyGeneratorZipfData(const int _maxKey, const double _alpha)
+        : maxKey(_maxKey) {
         // Compute normalization constant c for implied key range: [1, maxKey]
         for (int i = 1; i <= _maxKey; i++) {
-            c += ((double)1) / pow((double) i, _alpha);
+            c += ((double)1) / pow((double)i, _alpha);
         }
-        double* probs = new double[_maxKey+1];
+        double *probs = new double[_maxKey + 1];
+#pragma omp parallel for
         for (int i = 1; i <= _maxKey; i++) {
-            probs[i] = (((double)1) / pow((double) i, _alpha)) / c;
+            probs[i] = (((double)1) / pow((double)i, _alpha)) / c;
         }
         // Random should be seeded already (in main)
         std::random_shuffle(probs + 1, probs + maxKey);
-        sum_probs = new double[_maxKey+1];
+        sum_probs = new double[_maxKey + 1];
         sum_probs[0] = 0;
         for (int i = 1; i <= _maxKey; i++) {
             sum_probs[i] = sum_probs[i - 1] + probs[i];
@@ -57,135 +110,76 @@ public:
 
         delete[] probs;
     }
-    ~KeyGeneratorZipfData() {
-        delete[] sum_probs;
-    }
+
+    ~KeyGeneratorZipfData() { delete[] sum_probs; }
 };
-template <typename K>
+
+template <typename K, bool is_sparse>
 class KeyGeneratorZipf {
-private:
+   private:
     PAD;
-    KeyGeneratorZipfData * data;
-    Random64 * rng;
+    KeyGeneratorZipfData *data;
+    Random64 *rng;
+    K *uniqueKeys;
     PAD;
-public:
-    KeyGeneratorZipf(KeyGeneratorZipfData * _data, Random64 * _rng)
-          : data(_data), rng(_rng) {}
+
+   public:
+    KeyGeneratorZipf(Random64 *_rng, int _maxKey, double _zipfParam,
+                     void *_uniqueKeys, void *_data)
+        : rng(_rng),
+          data((KeyGeneratorZipfData *)_data),
+          uniqueKeys((K *)_uniqueKeys) {
+        // The zipf param is in KeyGeneratorZipfData
+    }
+
     K next() {
-        double z; // Uniform random number (0 < z < 1)
-        int zipf_value = 0; // Computed exponential value to be returned
+        double z;            // Uniform random number (0 < z < 1)
+        int zipf_value = 0;  // Computed exponential value to be returned
         // Pull a uniform random number (0 < z < 1)
         do {
-            z = (rng->next() / (double) std::numeric_limits<uint64_t>::max());
+            z = rng->nextDouble();
         } while ((z == 0) || (z == 1));
-        zipf_value = std::upper_bound(data->sum_probs + 1, data->sum_probs + data->maxKey + 1, z) - data->sum_probs;
+        zipf_value = std::upper_bound(data->sum_probs + 1,
+                                      data->sum_probs + data->maxKey + 1, z) -
+                     data->sum_probs;
         // Assert that zipf_value is between 1 and N
         assert((zipf_value >= 1) && (zipf_value <= data->maxKey));
         // GSTATS_ADD_IX(tid, key_gen_histogram, 1, zipf_value);
-        return (zipf_value);
+
+        if constexpr (is_sparse) {
+            return uniqueKeys[(zipf_value - 1)];
+        } else {
+            return zipf_value;
+        }
     }
 };
 
-// class KeyGeneratorZipfData {
-// public:
-//     PAD;
-//     int maxKey;
-//     double theta;
-//     double c = 0; // Normalization constant
-//     double * sum_probs; // Pre-calculated sum of probabilities
-//     PAD;
-
-//     KeyGeneratorZipfData(int _maxKey, double _alpha) {
-// //        std::cout<<"start KeyGeneratorZipfData"<<std::endl;
-//         maxKey = _maxKey;
-//         theta = _alpha;
-
-//         // Compute normalization constant c for implied key range: [1, maxKey]
-//         int i;
-//         for (i = 1; i <= _maxKey; i++)
-//             c = c + (1.0 / pow((double) i, theta));
-//         c = 1.0 / c;
-
-//         sum_probs = new double[_maxKey+1];
-//         sum_probs[0] = 0;
-//         for (i = 1; i <= _maxKey; i++) {
-//             sum_probs[i] = sum_probs[i - 1] + c / pow((double) i, theta);
-//         }
-// //        std::cout<<"end KeyGeneratorZipfData"<<std::endl;
-//     }
-//     ~KeyGeneratorZipfData() {
-//         delete[] sum_probs;
-//     }
-// };
-
-// template <typename K>
-// class KeyGeneratorZipf {
-// private:
-//     PAD;
-//     KeyGeneratorZipfData * data;
-//     Random64 * rng;
-//     PAD;
-// public:
-//     KeyGeneratorZipf(KeyGeneratorZipfData * _data, Random64 * _rng)
-//           : data(_data), rng(_rng) {}
-//     K next() {
-//         double z; // Uniform random number (0 < z < 1)
-//         int zipf_value = 0; // Computed exponential value to be returned
-//         int low, high, mid; // Binary-search bounds
-
-//         // Pull a uniform random number (0 < z < 1)
-//         do {
-//             z = (rng->next() / (double) std::numeric_limits<uint64_t>::max());
-// //            printf("    z=%lf\n", z);
-//         } while ((z == 0) || (z == 1));
-
-//         // Map z to the value
-//         low = 1, high = data->maxKey;
-//         do {
-//             mid = floor((low + high) / 2);
-//             if (data->sum_probs[mid] >= z && data->sum_probs[mid - 1] < z) {
-//                 zipf_value = mid;
-//                 break;
-//             } else if (data->sum_probs[mid] >= z) {
-//                 high = mid - 1;
-//             } else {
-//                 low = mid + 1;
-//             }
-//         } while (low <= high);
-
-//         // Assert that zipf_value is between 1 and N
-//         assert((zipf_value >= 1) && (zipf_value <= data->maxKey));
-
-//         GSTATS_ADD_IX(tid, key_gen_histogram, 1, zipf_value);
-//         return (zipf_value);
-//     }
-// };
-
-// Sampler taken from https://commons.apache.org/proper/commons-math/apidocs/src-html/org/apache/commons/math4/distribution/ZipfDistribution.html#line.44
-// Paper: Rejection-Inversion to Generate Variates from Monotone Discrete Distributions.
+// Sampler taken from
+// https://commons.apache.org/proper/commons-math/apidocs/src-html/org/apache/commons/math4/distribution/ZipfDistribution.html#line.44
+// Paper: Rejection-Inversion to Generate Variates from Monotone Discrete
+// Distributions.
 struct ZipfRejectionInversionSamplerData {
-    int* mapping;
+    int *mapping;
     const int maxkey;
-    ZipfRejectionInversionSamplerData(int _maxkey): maxkey(_maxkey) {
+    ZipfRejectionInversionSamplerData(int _maxkey) : maxkey(_maxkey) {
         mapping = new int[maxkey + 1];
-        #pragma omp parallel for
+#pragma omp parallel for
         for (int i = 0; i < maxkey + 1; ++i) {
             mapping[i] = i;
         }
         std::random_shuffle(mapping + 1, mapping + maxkey);
     }
 
-    ~ZipfRejectionInversionSamplerData() {
-        delete[] mapping;
-    }
+    ~ZipfRejectionInversionSamplerData() { delete[] mapping; }
 };
 
-
+template <typename K, bool is_sparse>
 class ZipfRejectionInversionSampler {
     const double exponent;
     const int maxkey;
-    Random64* rng;
-    ZipfRejectionInversionSamplerData* const data;
+    Random64 *rng;
+    ZipfRejectionInversionSamplerData *const data;
+    K *uniqueKeys;
     double hIntegralX1;
     double hIntegralmaxkey;
     double s;
@@ -194,15 +188,14 @@ class ZipfRejectionInversionSampler {
         return helper2((1 - exponent) * log(x)) * log(x);
     }
 
-    double h(const double x) {
-        return exp(-exponent * log(x));
-    }
+    double h(const double x) { return exp(-exponent * log(x)); }
 
     double hIntegralInverse(const double x) {
         double t = x * (1 - exponent);
         if (t < -1) {
             // Limit value to the range [-1, +inf).
-            // t could be smaller than -1 in some rare cases due to numerical errors.
+            // t could be smaller than -1 in some rare cases due to numerical
+            // errors.
             t = -1;
         }
         return exp(helper1(t) * x);
@@ -210,7 +203,7 @@ class ZipfRejectionInversionSampler {
 
     double helper1(const double x) {
         // if (abs(x)>1e-8) {
-            return log(x + 1)/x;
+        return log(x + 1) / x;
         // }
         // else {
         //     return 1.-x*((1./2.)-x*((1./3.)-x*(1./4.)));
@@ -219,21 +212,30 @@ class ZipfRejectionInversionSampler {
 
     double helper2(const double x) {
         // if (FastMath.abs(x)>1e-8) {
-            return (exp(x) - 1)/x;
+        return (exp(x) - 1) / x;
         // }
         // else {
         //     return 1.+x*(1./2.)*(1.+x*(1./3.)*(1.+x*(1./4.)));
         // }
     }
 
-public:
+   public:
     /** Simple constructor.
      * @param maxkey number of elements
      * @param exponent exponent parameter of the distribution
      */
-    ZipfRejectionInversionSampler(ZipfRejectionInversionSamplerData* const _data, const double _exponent, Random64 * _rng): data(_data), maxkey(_data->maxkey), exponent(_exponent), rng(_rng) {
+    ZipfRejectionInversionSampler(Random64 *_rng, int _maxKey,
+                                  double _zipfParam, void *_uniqueKeys,
+                                  void *_data)
+        : rng(_rng),
+          data((ZipfRejectionInversionSamplerData *)_data),
+          uniqueKeys((K *)_uniqueKeys),
+          maxkey(_maxKey),
+          exponent(_zipfParam) {
         if (exponent <= 1) {
-            std::cout << "-dist-zipf-fast only works with exponents greater than 1." << std::endl;
+            std::cout
+                << "-dist-zipf-fast only works with exponents greater than 1."
+                << std::endl;
             exit(-1);
         }
         hIntegralX1 = hIntegral(1.5) - 1;
@@ -245,11 +247,12 @@ public:
      * @param random random generator to use
      * @return generated integral number in the range [1, maxkey]
      */
-    int next() {
-        while(true) {
+    K next() {
+        while (true) {
             // Pull a uniform random number (0 < z < 1)
-            const double z = (rng->next() / (double) std::numeric_limits<uint64_t>::max());
-            const double u = hIntegralmaxkey + z * (hIntegralX1 - hIntegralmaxkey);
+            const double z = rng->nextDouble();
+            const double u =
+                hIntegralmaxkey + z * (hIntegralX1 - hIntegralmaxkey);
             // u is uniformly distributed in (hIntegralX1, hIntegralmaxkey]
 
             double x = hIntegralInverse(u);
@@ -258,18 +261,19 @@ public:
 
             if (k < 1) {
                 k = 1;
-            }
-            else if (k > maxkey) {
+            } else if (k > maxkey) {
                 k = maxkey;
             }
 
             if (k - x <= s || u >= hIntegral(k + 0.5) - h(k)) {
-                return data->mapping[k];
+                if constexpr (is_sparse) {
+                    return uniqueKeys[data->mapping[k] - 1];
+                } else {
+                    return data->mapping[k];
+                }
             }
         }
     }
-
 };
 
 #endif /* KEYGEN_H */
-

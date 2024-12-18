@@ -58,4 +58,7 @@ public:
     uint64_t next(uint64_t n) {
         return next() % n;
     }
+    double nextDouble() {
+        return next() / (double) (std::numeric_limits<uint64_t>::max() >> 11);
+    }
 };
