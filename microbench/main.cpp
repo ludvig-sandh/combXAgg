@@ -1239,7 +1239,6 @@ int main(int argc, char** argv) {
     // read command line args
     // example args: -i 25 -d 25 -k 10000 -rq 0 -rqsize 1000 -nprefill 8 -t 1000 -nrq 0 -nwork 8
     for (int i=1;i<argc;++i) {
-        std::cout<<"arg="<<argv[i]<<std::endl;
         if (strcmp(argv[i], "-i") == 0) {
             INS_FRAC = atof(argv[++i]);
         } else if (strcmp(argv[i], "-d") == 0) {
@@ -1279,11 +1278,9 @@ int main(int argc, char** argv) {
         } else if (strcmp(argv[i], "-dist-zipf") == 0) {
             ZIPF_PARAM = atof(argv[++i]);
             distribution = KeyGeneratorDistribution::ZIPF;
-            std::cout<<"using zipf"<<std::endl;
         } else if (strcmp(argv[i], "-dist-zipf-fast") == 0) {
             ZIPF_PARAM = atof(argv[++i]);
             distribution = KeyGeneratorDistribution::ZIPFFAST;
-            std::cout<<"using fast zipf"<<std::endl;
         } else if (strcmp(argv[i], "-dist-zipf-ycsb") == 0) {
             ZIPF_PARAM = atof(argv[++i]);
             distribution = KeyGeneratorDistribution::YCSBZIPF;
