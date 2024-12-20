@@ -381,7 +381,6 @@ void thread_timed(GlobalsT * g, int __tid) {
         ++cnt;
         VERBOSE if (cnt&&((cnt % 1000000) == 0)) COUTATOMICTID("op# "<<cnt<<std::endl);
         test_type key = g->keygens[tid]->next();
-        COUTATOMIC(key<<std::endl);
         double op = g->rngs[tid].next(100000000) / 1000000.;
         if (op < INS_FRAC) {
             TRACE COUTATOMICTID("### calling INSERT "<<key<<std::endl);

@@ -360,8 +360,8 @@ class YCSBZipfianGenerator {
         if constexpr (is_sparse) {
             return uniqueKeys[ret];
         } else {
-            // return 1 + hash_64_fnv1a((void *)&ret, sizeof(K)) % data->n; // scramble the keys
-            return 1+ret;
+            return 1 + hash_64_fnv1a((void *)&ret, sizeof(K)) % data->n; // scramble the keys
+            // return 1+ret;
         }
     }
 }; 
