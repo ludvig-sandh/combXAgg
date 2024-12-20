@@ -269,7 +269,7 @@ GSTATS_DECLARE_STATS_OBJECT(MAX_THREADS_POW2);
 #endif
 
 enum KeyGeneratorDistribution {
-    UNIFORM, ZIPF, ZIPFFAST
+    UNIFORM, ZIPF, ZIPFFAST, YCSBZIPF
 };
 
 template <class KeyGenT, class PrefillKeyGenT>
@@ -338,6 +338,8 @@ struct globals_t {
             distData = new KeyGeneratorZipfData(MAXKEY, ZIPF_PARAM);
         } else if (distribution == ZIPFFAST) {
             distData = new ZipfRejectionInversionSamplerData(MAXKEY);
+        } else if (distribution == YCSBZIPF) {
+            distData = new YCSBZipfianGneratorData(MAXKEY, ZIPF_PARAM);
         }
 
         #pragma omp parallel for
@@ -379,6 +381,7 @@ void thread_timed(GlobalsT * g, int __tid) {
         ++cnt;
         VERBOSE if (cnt&&((cnt % 1000000) == 0)) COUTATOMICTID("op# "<<cnt<<std::endl);
         test_type key = g->keygens[tid]->next();
+        COUTATOMIC(key<<std::endl);
         double op = g->rngs[tid].next(100000000) / 1000000.;
         if (op < INS_FRAC) {
             TRACE COUTATOMICTID("### calling INSERT "<<key<<std::endl);
@@ -1237,6 +1240,7 @@ int main(int argc, char** argv) {
     // read command line args
     // example args: -i 25 -d 25 -k 10000 -rq 0 -rqsize 1000 -nprefill 8 -t 1000 -nrq 0 -nwork 8
     for (int i=1;i<argc;++i) {
+        std::cout<<"arg="<<argv[i]<<std::endl;
         if (strcmp(argv[i], "-i") == 0) {
             INS_FRAC = atof(argv[++i]);
         } else if (strcmp(argv[i], "-d") == 0) {
@@ -1276,9 +1280,14 @@ int main(int argc, char** argv) {
         } else if (strcmp(argv[i], "-dist-zipf") == 0) {
             ZIPF_PARAM = atof(argv[++i]);
             distribution = KeyGeneratorDistribution::ZIPF;
+            std::cout<<"using zipf"<<std::endl;
         } else if (strcmp(argv[i], "-dist-zipf-fast") == 0) {
             ZIPF_PARAM = atof(argv[++i]);
             distribution = KeyGeneratorDistribution::ZIPFFAST;
+            std::cout<<"using fast zipf"<<std::endl;
+        } else if (strcmp(argv[i], "-dist-zipf-ycsb") == 0) {
+            ZIPF_PARAM = atof(argv[++i]);
+            distribution = KeyGeneratorDistribution::YCSBZIPF;
         } else if (strcmp(argv[i], "-dist-uniform") == 0) {
             distribution = KeyGeneratorDistribution::UNIFORM; // default behaviour
         } else if (strcmp(argv[i], "-t") == 0) {
@@ -1353,6 +1362,17 @@ int main(int argc, char** argv) {
             } else {
                 main_continued_with_globals(
                     new globals_t<ZipfRejectionInversionSampler<test_type, false>, KeyGeneratorUniform<test_type, false>>(distribution)
+                );
+            }
+        } break;
+        case YCSBZIPF: {
+            if (IS_SPARSE) {
+                main_continued_with_globals(
+                    new globals_t<YCSBZipfianGenerator<test_type, true>, KeyGeneratorUniform<test_type, true>>(distribution)
+                );
+            } else {
+                main_continued_with_globals(
+                    new globals_t<YCSBZipfianGenerator<test_type, false>, KeyGeneratorUniform<test_type, false>>(distribution)
                 );
             }
         } break;
