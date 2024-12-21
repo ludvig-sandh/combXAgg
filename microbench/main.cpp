@@ -269,7 +269,7 @@ GSTATS_DECLARE_STATS_OBJECT(MAX_THREADS_POW2);
 #endif
 
 enum KeyGeneratorDistribution {
-    UNIFORM, ZIPF, ZIPFFAST, YCSBZIPF
+    UNIFORM, ZIPF, ZIPFFAST, ZIPFYCSB
 };
 
 template <class KeyGenT, class PrefillKeyGenT>
@@ -338,7 +338,7 @@ struct globals_t {
             distData = new KeyGeneratorZipfData(MAXKEY, ZIPF_PARAM);
         } else if (distribution == ZIPFFAST) {
             distData = new ZipfRejectionInversionSamplerData(MAXKEY);
-        } else if (distribution == YCSBZIPF) {
+        } else if (distribution == ZIPFYCSB) {
             distData = new YCSBZipfianGneratorData(MAXKEY, ZIPF_PARAM);
         }
 
@@ -1283,7 +1283,7 @@ int main(int argc, char** argv) {
             distribution = KeyGeneratorDistribution::ZIPFFAST;
         } else if (strcmp(argv[i], "-dist-zipf-ycsb") == 0) {
             ZIPF_PARAM = atof(argv[++i]);
-            distribution = KeyGeneratorDistribution::YCSBZIPF;
+            distribution = KeyGeneratorDistribution::ZIPFYCSB;
         } else if (strcmp(argv[i], "-dist-uniform") == 0) {
             distribution = KeyGeneratorDistribution::UNIFORM; // default behaviour
         } else if (strcmp(argv[i], "-t") == 0) {
@@ -1361,7 +1361,7 @@ int main(int argc, char** argv) {
                 );
             }
         } break;
-        case YCSBZIPF: {
+        case ZIPFYCSB: {
             if (IS_SPARSE) {
                 main_continued_with_globals(
                     new globals_t<YCSBZipfianGenerator<test_type, true>, KeyGeneratorUniform<test_type, true>>(distribution)
