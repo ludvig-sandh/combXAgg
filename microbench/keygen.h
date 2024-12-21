@@ -276,4 +276,94 @@ class ZipfRejectionInversionSampler {
     }
 };
 
+class YCSBZipfianGneratorData {
+    public: 
+    PAD; 
+    int n; 
+    double theta; 
+    double alpha; 
+    double zeta2theta{0}; 
+    double zetan{0}; 
+    double eta{0};
+    double ptFivePowTheta{0};
+    PAD; 
+
+    YCSBZipfianGneratorData(int _n, double _theta) : theta(_theta), n(_n) {
+        alpha = 1.0 / (1.0 - theta);
+        zeta2theta = zeta(2, theta);
+        zetan = zeta(n, theta);
+        eta = (1 - pow(2.0 / n, 1 - theta)) / (1 - zeta2theta / zetan);
+        ptFivePowTheta = pow(0.5, theta);
+    }
+
+    double zeta(int n, double theta) {
+        double sum = 0;
+        #pragma omp parallel for schedule(static, 512) reduction(+ : sum)
+        for (int i = 0; i < n; i++) {
+            sum += pow(1.0 / (i + 1), theta);
+        }
+        return sum;
+    }
+};
+
+inline uint64_t hash_64_fnv1a(const void* key, const uint64_t len) {
+    
+    const char* data = (char*)key;
+    uint64_t hash = 0xcbf29ce484222325;
+    uint64_t prime = 0x100000001b3;
+    
+    for(int i = 0; i < len; ++i) {
+        uint8_t value = data[i];
+        hash = hash ^ value;
+        hash *= prime;
+    }
+    
+    return hash;
+
+} //hash_64_fnv1a
+
+template <typename K, bool is_sparse>
+class YCSBZipfianGenerator {
+    // https://github.com/brianfrankcooper/YCSB/blob/master/core/src/main/java/site/ycsb/generator/ZipfianGenerator.java
+    // This generator avoids looking up a long data array (like the other zipfian generators do using std::upper_bound) which will reduce the number of cache misses significantly
+
+    private:
+    PAD; 
+    Random64 *rng;
+    YCSBZipfianGneratorData *data;
+    K *uniqueKeys;
+    PAD;
+
+    public:
+    YCSBZipfianGenerator(Random64 *_rng, int _maxKey, double _zipfParam,
+                            void *_uniqueKeys, void *_data)
+        : rng(_rng),
+          data((YCSBZipfianGneratorData *)_data),
+          uniqueKeys((K *)_uniqueKeys) {
+          } 
+
+    K next() {
+        double u = rng->nextDouble(); 
+        double uz = u * data->zetan;
+
+        K ret;
+        if (uz < 1.0) {
+            ret = 0;
+        }
+        else if (uz < 1.0 + data->ptFivePowTheta) {
+            ret = 1;
+        } 
+        else {
+            ret = (K)(data->n * pow(data->eta * u - data->eta + 1, data->alpha));
+        }
+
+        if constexpr (is_sparse) {
+            return uniqueKeys[ret];
+        } else {
+            return 1 + hash_64_fnv1a((void *)&ret, sizeof(K)) % data->n; // scramble the keys
+            // return 1+ret;
+        }
+    }
+}; 
+
 #endif /* KEYGEN_H */
