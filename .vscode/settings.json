@@ -78,7 +78,13 @@
         "__threading_support": "cpp",
         "__tuple": "cpp",
         "ios": "cpp",
-        "queue": "cpp"
+        "queue": "cpp",
+        "charconv": "cpp",
+        "format": "cpp",
+        "numbers": "cpp",
+        "semaphore": "cpp",
+        "span": "cpp",
+        "variant": "cpp"
     },
     "svg.preview.background": "black",
     "python.pythonPath": "/usr/bin/python3",
