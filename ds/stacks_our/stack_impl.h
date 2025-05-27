@@ -86,9 +86,7 @@ class Stack {
         // Unlocks the waiting threads
         aggregator->batch = newBatch;
     }
-    void PushToMain(
-        nodeptr subStackTop,
-        nodeptr subStackBot)  // Aggregation of multiple push operations
+    void PushToMain( nodeptr subStackTop, nodeptr subStackBot)  // Aggregation of multiple push operations
                               // to main(same as aggregation of F&A).
     {
         while (true) {
@@ -102,8 +100,7 @@ class Stack {
         struct node_t<K, V> *tempTop = batch->subStackBot;
         int i = 1;
         while (leaderIndex + i < batch->finalPushCount) {
-            while (batch->eliminationArray[leaderIndex +
-                                           i])  // Wait for Push to write value.
+            while (!batch->eliminationArray[leaderIndex + i])  // Wait for Push to write value.
             {
             }
             nodeptr tempNode = batch->eliminationArray[leaderIndex + i];
@@ -135,36 +132,35 @@ class Stack {
             int pushIndex = myBatch->pushCounter.fetch_add(
                 1);  // Opt. Check software F&A speed up?
             // myBatch->eliminationArray[pushIndex] = myNode;
-            if (pushIndex == 0 &&
-                !myBatch->hasLeader.test_and_set())  // Should be test and set.
+            if (pushIndex == 0 && !myBatch->hasLeader.test_and_set())  // Should be test and set.
             {
                 FreezeBatch(myAggregator, myBatch);
-            } else {
-                while (
-                    myBatch ==
-                    myAggregator->batch)  // Spin until freezing has finished.
+            }
+            else 
+            {
+                while (myBatch == myAggregator->batch)  // Spin until freezing has finished.
                 {
                 }
             }
             if (pushIndex >= myBatch->finalPushCount)  // I wasn't included.
                 continue;  // Try to join a new batch
+
             myBatch->eliminationArray[pushIndex] = myNode;
             if (pushIndex < myBatch->finalPopCount)  // Eliminated.
             {
-                COUTATOMICTID("dummy eliminated " << value << std::endl);
+                // COUTATOMICTID("dummy eliminated " << value << std::endl);
                 return true;
             }
             if (pushIndex == myBatch->finalPopCount) {
                 CreatePushSubstack(myBatch, pushIndex);
                 PushToMain(myBatch->subStackTop, myBatch->subStackBot);
-                myBatch->isBatchApplied = true;
+                myBatch->isBatchApplied = true; //FIXME: shared var should be atomic
             } else {
-                while (myBatch->isBatchApplied ==
-                       false)  // Wait for leader to apply to main.
+                while (myBatch->isBatchApplied == false)  // Wait for leader to apply to main.
                 {
                 }
             }
-            COUTATOMICTID("dummy pushing " << value << std::endl);
+            // COUTATOMICTID("dummy pushing " << value << std::endl);
             return true;
         }
     }
@@ -198,13 +194,15 @@ class Stack {
     bool pop(const int &tid) {
         Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
         bool success = false;
-        COUTATOMICTID("DUMMY popping " << std::endl);
+        // COUTATOMICTID("DUMMY popping " << std::endl);
         while (true) {
             struct Batch<K, V> *myBatch = myAggregator->batch;
             int popIndex = myBatch->popCounter.fetch_add(1);
             if (popIndex == 0 && !myBatch->hasLeader.test_and_set()) {
                 FreezeBatch(myAggregator, myBatch);
-            } else {
+            } 
+            else 
+            {
                 while (myBatch == myAggregator->batch) {
                 }
             }
@@ -212,18 +210,19 @@ class Stack {
                 continue;
             if (popIndex < myBatch->finalPushCount)  // Eliminated.
             {
-                while (myBatch->eliminationArray[popIndex])  // Wait for Push to
+                while (!myBatch->eliminationArray[popIndex])  // Wait for Push to
                                                              // write value.
                 {
                 }
                 return myBatch->eliminationArray[popIndex]->val;
             }
-            if (popIndex == myBatch->finalPushCount) {
-                int remainingPops =
-                    myBatch->finalPopCount - myBatch->finalPushCount;
+            if (popIndex == myBatch->finalPushCount) 
+            {
+                int remainingPops = myBatch->finalPopCount - myBatch->finalPushCount;
                 myBatch->subStackTop = PopFromMain(remainingPops);
-                myBatch->isBatchApplied = true;
-            } else {
+                myBatch->isBatchApplied = true; //FIX: shared var need to be atomic
+            } else 
+            {
                 while (myBatch->isBatchApplied == false) {
                 }
             }

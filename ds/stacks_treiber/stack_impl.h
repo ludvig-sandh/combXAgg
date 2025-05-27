@@ -49,7 +49,7 @@ class Stack {
             new_top->next = old_top;
         } while (!_top.compare_exchange_strong(old_top, new_top,
                                                std::memory_order_acq_rel));
-        COUTATOMICTID("dummy pushing " << value << std::endl);
+        // COUTATOMICTID("dummy pushing " << value << std::endl);
         return true;
     }
 
@@ -66,7 +66,7 @@ class Stack {
         } while (!_top.compare_exchange_strong(old_top, new_top,
                                                std::memory_order_acq_rel));
 
-        COUTATOMICTID("DUMMY popping " << std::endl);
+        // COUTATOMICTID("DUMMY popping " << std::endl);
         return success;
     }
 };

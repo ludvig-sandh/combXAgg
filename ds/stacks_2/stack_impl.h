@@ -65,7 +65,7 @@ class Stack {
         top.top_lock.lock();
         my_node->next = top.topptr;
         top.topptr = my_node;
-        COUTATOMICTID("dummy pushing " << value << std::endl);
+        // COUTATOMICTID("dummy pushing " << value << std::endl);
         success = true;
         top.top_lock.unlock();
         return success;
@@ -80,7 +80,7 @@ class Stack {
             return success;
         }
         top.topptr = temp->next;
-        COUTATOMICTID("DUMMY popping " << std::endl);
+        // COUTATOMICTID("DUMMY popping " << std::endl);
         top.top_lock.unlock();
         success = true;
         return success;
