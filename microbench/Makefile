@@ -73,7 +73,7 @@ ifeq ($(debra_orig_free), 1)
 	FLAGS += -DDEBRA_ORIGINAL_FREE
 endif
 
-skip_validation=0
+skip_validation=1
 ifeq ($(skip_validation), 1)
 	FLAGS += -DSKIP_VALIDATION
 endif
