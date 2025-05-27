@@ -47,8 +47,16 @@ class Stack {
     ~Stack() {}
 
     V peek(const int &tid) {
-        std::lock_guard<std::mutex> lock(top.top_lock);
-        return top.topptr->val;
+        V retVal;
+        top.top_lock.lock();
+        if (top.topptr) {
+            retVal = top.topptr->val;
+        } else {
+            retVal = V();
+        }
+        top.top_lock.unlock();
+
+        return retVal;
     }
 
     bool push(const int &tid, const V &value) {
@@ -64,11 +72,13 @@ class Stack {
     }
 
     bool pop(const int &tid) {
-        // atomic_compare_exchange_strong()
         bool success = false;
         top.top_lock.lock();
         nodeptr temp = top.topptr;
-        if (!temp) return success;
+        if (!temp) {
+            top.top_lock.unlock();
+            return success;
+        }
         top.topptr = temp->next;
         COUTATOMICTID("DUMMY popping " << std::endl);
         top.top_lock.unlock();

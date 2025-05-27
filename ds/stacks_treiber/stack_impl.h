@@ -62,7 +62,7 @@ class Stack {
             if (old_top == nullptr) {
                 return V();
             }
-            new_top->next = old_top;
+            new_top = old_top->next;
         } while (!_top.compare_exchange_strong(old_top, new_top,
                                                std::memory_order_acq_rel));
 

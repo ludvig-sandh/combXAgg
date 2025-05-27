@@ -118,7 +118,11 @@ class Stack {
    public:
     Stack(const int num_threads, const int _min_key, const int _max_key,
           const V _NO_VALUE, unsigned int id)
-        : main_top(NULL) {}
+        : main_top(NULL) {
+        for (int i = 0; i < NUMBER_AGGREGATORS; i++) {
+            aggregator[i].batch = CreateNewBatch();
+        }
+    }
     ~Stack() {}
 
     V peek(const int &tid) { return main_top ? main_top.load() : V(); }
