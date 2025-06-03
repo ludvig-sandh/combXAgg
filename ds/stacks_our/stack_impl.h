@@ -11,7 +11,10 @@
 #ifndef STACK_IMPL_H
 #define STACK_IMPL_H
 
-#define MAX_AGGREGATOR_THREADS 12
+//FIXME: creating unnecessary aggregators/
+//FIXME: memory leaks
+
+#define MAX_AGGREGATOR_THREADS 48
 #define NUMBER_AGGREGATORS 64
 
 #define CHOOSE_AGGREGATOR(tId) (aggregator[(tId) / MAX_AGGREGATOR_THREADS])
@@ -20,35 +23,50 @@
 
 template <typename K, typename V>
 class node_t {
-   public:
+    public:
     K key;
     V val;
+    PAD;
     std::atomic<node_t<K, V> *> next;
+    PAD;
+
     node_t(K key, V val) {
         key = key;
         val = val;
         next = nullptr;
     }
+    PAD;
 };
 #define nodeptr node_t<K, V> *
 
 template <typename K, typename V>
 struct Batch {
+    PAD;
     std::atomic<nodeptr> eliminationArray[MAX_AGGREGATOR_THREADS];
+    PAD;
     std::atomic<int> pushCounter;
+    PAD;
     std::atomic<int> popCounter;
+    PAD;
     std::atomic<int> finalPushCount;
+    PAD;
     std::atomic<int> finalPopCount;
-    std::atomic_flag hasLeader;
+    PAD;
     std::atomic<bool> isBatchApplied;
+    PAD;
+    std::atomic_flag hasLeader;
     std::atomic<nodeptr> subStackTop;
+    // PAD;
     std::atomic<nodeptr> subStackBot;
-    struct Batch *next;
+    PAD;
+    // struct Batch *next;
 };
 
 template <typename K, typename V>
 struct Aggregator {
+    PAD;
     std::atomic<struct Batch<K, V> *> batch;
+    PAD;
 };
 
 template <typename K, typename V, class RecManager>
@@ -58,20 +76,22 @@ class Stack {
     std::atomic<nodeptr> main_top;
     PAD;
     Aggregator<K, V> aggregator[NUMBER_AGGREGATORS];
+    PAD;
 
     struct Batch<K, V> *CreateNewBatch() {
         struct Batch<K, V> *newBatch = new Batch<K, V>;
-        newBatch->popCounter = 0;
-        newBatch->pushCounter = 0;
-        newBatch->finalPopCount = 0;
-        newBatch->finalPushCount = 0;
-        newBatch->hasLeader.clear();
-        newBatch->isBatchApplied = false;
-        newBatch->subStackBot = NULL;
-        newBatch->subStackTop = NULL;
-        newBatch->next = NULL;
+        newBatch->popCounter.store(0, std::memory_order_relaxed);
+        newBatch->pushCounter.store(0,std::memory_order_relaxed);
+        newBatch->finalPopCount.store(0, std::memory_order_relaxed);
+        newBatch->finalPushCount.store(0, std::memory_order_relaxed);
+        // newBatch->hasLeader.store(false, std::memory_order_relaxed);
+        newBatch->hasLeader.clear(std::memory_order_relaxed);
+        newBatch->isBatchApplied.store(false, std::memory_order_relaxed);
+        newBatch->subStackBot.store(NULL, std::memory_order_relaxed);
+        newBatch->subStackTop.store(NULL, std::memory_order_relaxed);
+        // newBatch->next = NULL;
         for (size_t i = 0; i < MAX_AGGREGATOR_THREADS; i++) {
-            newBatch->eliminationArray[i] = NULL;
+            newBatch->eliminationArray[i].store(NULL, std::memory_order_relaxed);
         }
         return newBatch;
     }
@@ -79,13 +99,13 @@ class Stack {
     void FreezeBatch(struct Aggregator<K, V> *aggregator,
                      std::atomic<struct Batch<K, V> *> batch) {
         std::atomic<struct Batch<K, V> *> newBatch;
-        newBatch.store(CreateNewBatch());
-        newBatch.load()->next = batch.load();
+        newBatch.store(CreateNewBatch(), std::memory_order_release); //FIXME: relaxed order?
+        // newBatch.load(std::memory_order_acquire)->next = batch.load(std::memory_order_acquire);
         // Snapshots the counters
-        batch.load()->finalPushCount.store(batch.load()->pushCounter.load());
-        batch.load()->finalPopCount.store(batch.load()->popCounter.load());
+        batch.load(std::memory_order_acquire)->finalPushCount.store(batch.load(std::memory_order_acquire)->pushCounter.load(std::memory_order_acquire), std::memory_order_release);
+        batch.load(std::memory_order_acquire)->finalPopCount.store(batch.load(std::memory_order_acquire)->popCounter.load(std::memory_order_acquire), std::memory_order_release);
         // Unlocks the waiting threads
-        aggregator->batch.store(newBatch);
+        aggregator->batch.store(newBatch, std::memory_order_release);
     }
     void PushToMain(
         nodeptr subStackTop,
@@ -99,16 +119,16 @@ class Stack {
         }
     }
     void CreatePushSubstack(struct Batch<K, V> *batch, int leaderIndex) {
-        batch->subStackBot.store(batch->eliminationArray[leaderIndex].load());
-        struct node_t<K, V> *tempTop = batch->subStackBot;
+        batch->subStackBot.store(batch->eliminationArray[leaderIndex].load(std::memory_order_relaxed), std::memory_order_relaxed);
+        struct node_t<K, V> *tempTop = batch->subStackBot.load(std::memory_order_relaxed);
         int i = 1;
         while (leaderIndex + i < batch->finalPushCount) {
             while (
                 !batch->eliminationArray[leaderIndex +
-                                         i])  // Wait for Push to write value.
+                                         i].load(std::memory_order_acquire))  // Wait for Push to write value.
             {
             }
-            nodeptr tempNode = batch->eliminationArray[leaderIndex + i];
+            nodeptr tempNode = batch->eliminationArray[leaderIndex + i].load(std::memory_order_relaxed);
             tempNode->next = tempTop;
             tempTop = tempNode;
             i++;
@@ -127,7 +147,7 @@ class Stack {
     }
     ~Stack() {}
 
-    V peek(const int &tid) { return main_top ? main_top.load() : V(); }
+    V peek(const int &tid) { return main_top ? main_top.load(std::memory_order_acquire) : V(); }
 
     bool push(const int &tid, const V &value) {
         Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
@@ -151,21 +171,21 @@ class Stack {
                 }
             }
             if (pushIndex >=
-                myBatch->finalPushCount.load())  // I wasn't included.
+                myBatch->finalPushCount.load(std::memory_order_acquire))  // I wasn't included.
                 continue;                        // Try to join a new batch
 
-            myBatch->eliminationArray[pushIndex].store(myNode);
-            if (pushIndex < myBatch->finalPopCount.load())  // Eliminated.
+            myBatch->eliminationArray[pushIndex].store(myNode, std::memory_order_release);
+            if (pushIndex < myBatch->finalPopCount.load(std::memory_order_acquire))  // Eliminated.
             {
                 // COUTATOMICTID("dummy eliminated " << value << std::endl);
                 return true;
             }
-            if (pushIndex == myBatch->finalPopCount.load()) {
+            if (pushIndex == myBatch->finalPopCount.load(std::memory_order_acquire)) {
                 CreatePushSubstack(myBatch, pushIndex);
-                PushToMain(myBatch->subStackTop, myBatch->subStackBot);
-                myBatch->isBatchApplied.store(true);
+                PushToMain(myBatch->subStackTop, myBatch->subStackBot.load(std::memory_order_relaxed));
+                myBatch->isBatchApplied.store(true, std::memory_order_release);
             } else {
-                while (myBatch->isBatchApplied.load() ==
+                while (myBatch->isBatchApplied.load(std::memory_order_acquire) ==
                        false)  // Wait for leader to apply to main.
                 {
                 }
@@ -214,34 +234,34 @@ class Stack {
                 while (myBatch == myAggregator->batch) {
                 }
             }
-            if (popIndex >= myBatch->finalPopCount.load())  // Not included.
+            if (popIndex >= myBatch->finalPopCount.load(std::memory_order_acquire))  // Not included.
                 continue;
-            if (popIndex < myBatch->finalPushCount.load())  // Eliminated.
+            if (popIndex < myBatch->finalPushCount.load(std::memory_order_acquire))  // Eliminated.
             {
                 // COUTATOMICTID("DUMMY elimin pop , popIndex = "
                             //   << popIndex << " , Push count = "
-                            //   << myBatch->finalPushCount.load()
+                            //   << myBatch->finalPushCount.load(std::memory_order_acquire)
                             //   << " FinalPopCount = "
-                            //   << myBatch->finalPopCount.load() << std::endl);
+                            //   << myBatch->finalPopCount.load(std::memory_order_acquire) << std::endl);
                 while (!myBatch->eliminationArray[popIndex]
-                            .load())  // Wait for Push
+                            .load(std::memory_order_acquire))  // Wait for Push
                                       // to write value.
                 {
                 }
-                nodeptr my_ptr = myBatch->eliminationArray[popIndex].load();
+                nodeptr my_ptr = myBatch->eliminationArray[popIndex].load(std::memory_order_acquire);
                 return my_ptr->val;
             }
-            if (popIndex == myBatch->finalPushCount.load()) {
-                int remainingPops = myBatch->finalPopCount.load() -
-                                    myBatch->finalPushCount.load();
-                myBatch->subStackTop = PopFromMain(remainingPops);
-                myBatch->isBatchApplied.store(true);
+            if (popIndex == myBatch->finalPushCount.load(std::memory_order_acquire)) {
+                int remainingPops = myBatch->finalPopCount.load(std::memory_order_acquire) -
+                                    myBatch->finalPushCount.load(std::memory_order_acquire);
+                myBatch->subStackTop.store(PopFromMain(remainingPops), std::memory_order_release);
+                myBatch->isBatchApplied.store(true, std::memory_order_release);
             } else {
-                while (myBatch->isBatchApplied.load() == false) {
+                while (myBatch->isBatchApplied.load(std::memory_order_acquire) == false) {
                 }
             }
-            return GetRetValue(popIndex - myBatch->finalPushCount.load(),
-                               myBatch->subStackTop.load());
+            return GetRetValue(popIndex - myBatch->finalPushCount.load(std::memory_order_acquire),
+                               myBatch->subStackTop.load(std::memory_order_acquire));
         }
         return success;
     }
