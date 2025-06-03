@@ -34,21 +34,21 @@ class node_t {
 
 template <typename K, typename V>
 struct Batch {
-    nodeptr eliminationArray[MAX_AGGREGATOR_THREADS];
+    std::atomic<nodeptr> eliminationArray[MAX_AGGREGATOR_THREADS];
     std::atomic<int> pushCounter;
     std::atomic<int> popCounter;
-    int finalPushCount;
-    int finalPopCount;
+    std::atomic<int> finalPushCount;
+    std::atomic<int> finalPopCount;
     std::atomic_flag hasLeader;
-    volatile bool isBatchApplied;
-    nodeptr subStackTop;
-    nodeptr subStackBot;
+    std::atomic<bool> isBatchApplied;
+    std::atomic<nodeptr> subStackTop;
+    std::atomic<nodeptr> subStackBot;
     struct Batch *next;
 };
 
 template <typename K, typename V>
 struct Aggregator {
-    struct Batch<K, V> *batch;
+    std::atomic<struct Batch<K, V> *> batch;
 };
 
 template <typename K, typename V, class RecManager>
@@ -77,16 +77,19 @@ class Stack {
     }
 
     void FreezeBatch(struct Aggregator<K, V> *aggregator,
-                     struct Batch<K, V> *batch) {
-        struct Batch<K, V> *newBatch = CreateNewBatch();
-        newBatch->next = batch;
+                     std::atomic<struct Batch<K, V> *> batch) {
+        std::atomic<struct Batch<K, V> *> newBatch;
+        newBatch.store(CreateNewBatch());
+        newBatch.load()->next = batch.load();
         // Snapshots the counters
-        batch->finalPushCount = batch->pushCounter;
-        batch->finalPopCount = batch->popCounter;
+        batch.load()->finalPushCount.store(batch.load()->pushCounter.load());
+        batch.load()->finalPopCount.store(batch.load()->popCounter.load());
         // Unlocks the waiting threads
-        aggregator->batch = newBatch;
+        aggregator->batch.store(newBatch);
     }
-    void PushToMain( nodeptr subStackTop, nodeptr subStackBot)  // Aggregation of multiple push operations
+    void PushToMain(
+        nodeptr subStackTop,
+        nodeptr subStackBot)  // Aggregation of multiple push operations
                               // to main(same as aggregation of F&A).
     {
         while (true) {
@@ -96,11 +99,13 @@ class Stack {
         }
     }
     void CreatePushSubstack(struct Batch<K, V> *batch, int leaderIndex) {
-        batch->subStackBot = batch->eliminationArray[leaderIndex];
+        batch->subStackBot.store(batch->eliminationArray[leaderIndex].load());
         struct node_t<K, V> *tempTop = batch->subStackBot;
         int i = 1;
         while (leaderIndex + i < batch->finalPushCount) {
-            while (!batch->eliminationArray[leaderIndex + i])  // Wait for Push to write value.
+            while (
+                !batch->eliminationArray[leaderIndex +
+                                         i])  // Wait for Push to write value.
             {
             }
             nodeptr tempNode = batch->eliminationArray[leaderIndex + i];
@@ -131,36 +136,41 @@ class Stack {
             struct Batch<K, V> *myBatch = myAggregator->batch;
             int pushIndex = myBatch->pushCounter.fetch_add(
                 1);  // Opt. Check software F&A speed up?
-            // myBatch->eliminationArray[pushIndex] = myNode;
-            if (pushIndex == 0 && !myBatch->hasLeader.test_and_set())  // Should be test and set.
+                     // myBatch->eliminationArray[pushIndex] = myNode;
+
+            // COUTATOMICTID("dummy pushing " << value << std::endl);
+            if (pushIndex == 0 &&
+                !myBatch->hasLeader.test_and_set())  // Should be test and set.
             {
                 FreezeBatch(myAggregator, myBatch);
-            }
-            else 
-            {
-                while (myBatch == myAggregator->batch)  // Spin until freezing has finished.
+            } else {
+                while (
+                    myBatch ==
+                    myAggregator->batch)  // Spin until freezing has finished.
                 {
                 }
             }
-            if (pushIndex >= myBatch->finalPushCount)  // I wasn't included.
-                continue;  // Try to join a new batch
+            if (pushIndex >=
+                myBatch->finalPushCount.load())  // I wasn't included.
+                continue;                        // Try to join a new batch
 
-            myBatch->eliminationArray[pushIndex] = myNode;
-            if (pushIndex < myBatch->finalPopCount)  // Eliminated.
+            myBatch->eliminationArray[pushIndex].store(myNode);
+            if (pushIndex < myBatch->finalPopCount.load())  // Eliminated.
             {
                 // COUTATOMICTID("dummy eliminated " << value << std::endl);
                 return true;
             }
-            if (pushIndex == myBatch->finalPopCount) {
+            if (pushIndex == myBatch->finalPopCount.load()) {
                 CreatePushSubstack(myBatch, pushIndex);
                 PushToMain(myBatch->subStackTop, myBatch->subStackBot);
-                myBatch->isBatchApplied = true; //FIXME: shared var should be atomic
+                myBatch->isBatchApplied.store(true);
             } else {
-                while (myBatch->isBatchApplied == false)  // Wait for leader to apply to main.
+                while (myBatch->isBatchApplied.load() ==
+                       false)  // Wait for leader to apply to main.
                 {
                 }
             }
-            // COUTATOMICTID("dummy pushing " << value << std::endl);
+
             return true;
         }
     }
@@ -194,40 +204,44 @@ class Stack {
     bool pop(const int &tid) {
         Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
         bool success = false;
-        // COUTATOMICTID("DUMMY popping " << std::endl);
         while (true) {
             struct Batch<K, V> *myBatch = myAggregator->batch;
             int popIndex = myBatch->popCounter.fetch_add(1);
+            // COUTATOMICTID("DUMMY popping " << std::endl);
             if (popIndex == 0 && !myBatch->hasLeader.test_and_set()) {
                 FreezeBatch(myAggregator, myBatch);
-            } 
-            else 
-            {
+            } else {
                 while (myBatch == myAggregator->batch) {
                 }
             }
-            if (popIndex >= myBatch->finalPopCount)  // Not included.
+            if (popIndex >= myBatch->finalPopCount.load())  // Not included.
                 continue;
-            if (popIndex < myBatch->finalPushCount)  // Eliminated.
+            if (popIndex < myBatch->finalPushCount.load())  // Eliminated.
             {
-                while (!myBatch->eliminationArray[popIndex])  // Wait for Push to
-                                                             // write value.
+                // COUTATOMICTID("DUMMY elimin pop , popIndex = "
+                            //   << popIndex << " , Push count = "
+                            //   << myBatch->finalPushCount.load()
+                            //   << " FinalPopCount = "
+                            //   << myBatch->finalPopCount.load() << std::endl);
+                while (!myBatch->eliminationArray[popIndex]
+                            .load())  // Wait for Push
+                                      // to write value.
                 {
                 }
-                return myBatch->eliminationArray[popIndex]->val;
+                nodeptr my_ptr = myBatch->eliminationArray[popIndex].load();
+                return my_ptr->val;
             }
-            if (popIndex == myBatch->finalPushCount) 
-            {
-                int remainingPops = myBatch->finalPopCount - myBatch->finalPushCount;
+            if (popIndex == myBatch->finalPushCount.load()) {
+                int remainingPops = myBatch->finalPopCount.load() -
+                                    myBatch->finalPushCount.load();
                 myBatch->subStackTop = PopFromMain(remainingPops);
-                myBatch->isBatchApplied = true; //FIX: shared var need to be atomic
-            } else 
-            {
-                while (myBatch->isBatchApplied == false) {
+                myBatch->isBatchApplied.store(true);
+            } else {
+                while (myBatch->isBatchApplied.load() == false) {
                 }
             }
-            return GetRetValue(popIndex - myBatch->finalPushCount,
-                               myBatch->subStackTop);
+            return GetRetValue(popIndex - myBatch->finalPushCount.load(),
+                               myBatch->subStackTop.load());
         }
         return success;
     }
