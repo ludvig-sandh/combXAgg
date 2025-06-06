@@ -57,7 +57,7 @@
 /// is much better by setting `--numa_nodes` equal to `2`. Note that the runtime successfully reports that the available
 /// NUMA nodes are `8`, but this value is not optimal for H-Synch in this configuration. An experimental analysis for
 /// different values of `--numa_nodes` may be needed.
-#define SYNCH_NUMA_SUPPORT
+// #define SYNCH_NUMA_SUPPORT  #FIXME: By commenting this out we may have meesed up with peerf of CCSYNCH??
 
 /// @brief This definition enables some optimizations on memory allocation that seems to greatly improve the performance
 /// on AMD Epyc multiprocessors. This flag seems to double the performance in CC-Synch and H-Synch algorithms.

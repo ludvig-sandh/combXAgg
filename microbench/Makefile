@@ -40,8 +40,10 @@ no_optimize=0
 ifeq ($(no_optimize), 1)
 	FLAGS += -O0 -fno-inline-functions -fno-inline
 else
-	FLAGS += -O3
+	FLAGS += -O3 -fpermissive
 endif
+
+# FIXME: Dangerous fpermissive flag
 
 debug_timeline_record_every_deamortized_free=0
 ifeq ($(debug_timeline_record_every_deamortized_free), 1)

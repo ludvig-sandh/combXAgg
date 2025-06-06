@@ -24,6 +24,28 @@ class node_t {
 };
 #define nodeptr node_t<K, V> *
 
+class ThreadData
+{
+private:
+    PAD;
+public:
+
+    CCStackThreadState *th_state;
+
+    ThreadData()
+    {
+    }
+private:
+    PAD;
+};
+
+// PAD;
+ThreadData threadData[MAX_THREADS_POW2];
+PAD;
+
+
+
+
 template <typename K, typename V, class RecManager>
 class Stack {
    private:
@@ -37,11 +59,11 @@ class Stack {
     Stack(const int num_threads, const int _min_key, const int _max_key,
           const V _NO_VALUE, unsigned int id)
         : _top(NULL) {
-        CCStackThreadState *th_state;
-        long i, rnum;
-        th_state = reinterpret_cast<CCStackThreadState *>(
-            synchGetAlignedMemory(CACHE_LINE_SIZE, sizeof(CCStackThreadState)));
-        CCStackThreadStateInit(object_struct, th_state, (int)id);
+        // CCStackThreadState *th_state;
+        // long i, rnum;
+        // th_state = reinterpret_cast<CCStackThreadState *>(
+        //     synchGetAlignedMemory(CACHE_LINE_SIZE, sizeof(CCStackThreadState)));
+        // CCStackThreadStateInit(object_struct, th_state, (int)id);
     }
     ~Stack() {}
 
@@ -57,6 +79,21 @@ class Stack {
         bool success = false;
         COUTATOMICTID("DUMMY popping " << std::endl);
         return success;
+    }
+
+    void initThread(const int tid) {
+        // if (init[tid]) return;
+        // else init[tid] = !init[tid];
+        // recmgr->initThread(tid);
+        threadData[tid].th_state = reinterpret_cast<CCStackThreadState *>( synchGetAlignedMemory(CACHE_LINE_SIZE, sizeof(CCStackThreadState)));
+        
+        CCStackThreadStateInit(object_struct, threadData[tid].th_state, (int)tid);
+    }
+
+    void deinitThread(const int tid) {
+        // if (!init[tid]) return;
+        // else init[tid] = !init[tid];
+        // // recmgr->deinitThread(tid);
     }
 };
 
