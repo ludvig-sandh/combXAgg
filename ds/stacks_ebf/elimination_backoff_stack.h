@@ -53,12 +53,12 @@ struct Node : ThreadLocalMemory<kCachePrefetch * 4> {
 }  // namespace detail
 
 template<typename T>
-class EliminationBackoffStack : public Stack<T> {
+class EliminationBackoffStack /* : public Stack<T>  */{
  public:
   EliminationBackoffStack(uint64_t num_threads, uint64_t size_collision,
       uint64_t delay);
-  bool push(T item);
-  bool pop(T *item);
+  bool push(T item, const int &tid);
+  bool pop(T *item, const int &tid);
 
   char* ds_get_stats(void) {
     char buffer[255] = { 0 };
@@ -93,7 +93,7 @@ class EliminationBackoffStack : public Stack<T> {
   const uint64_t delay_;
 
   bool try_collision(uint64_t thread_id, uint64_t other, T *item);
-  bool backoff(Opcode opcode, T *item);
+  bool backoff(Opcode opcode, T *item, const int &tid);
 
 };
 
@@ -162,8 +162,9 @@ bool EliminationBackoffStack<T>::try_collision(
 }
 
 template<typename T>
-bool EliminationBackoffStack<T>::backoff(Opcode opcode, T *item) {
-  uint64_t thread_id = ThreadContext::get().thread_id();
+bool EliminationBackoffStack<T>::backoff(Opcode opcode, T *item, const int &tid) {
+  // uint64_t thread_id = ThreadContext::get().thread_id();
+  uint64_t thread_id = tid;
 
   operations_[thread_id]->opcode = opcode;
   operations_[thread_id]->data = *item;
@@ -210,8 +211,8 @@ bool EliminationBackoffStack<T>::backoff(Opcode opcode, T *item) {
   return false;
 }
 template<typename T>
-bool EliminationBackoffStack<T>::push(T item) {
-      if (backoff(Opcode::Push, &item)) {
+bool EliminationBackoffStack<T>::push(T item, const int &tid) {
+      if (backoff(Opcode::Push, &item, tid)) {
         return true;
       }
   Node *n = new Node(item);
@@ -223,7 +224,7 @@ bool EliminationBackoffStack<T>::push(T item) {
     top_new = NodePtr(n, top_old.tag() + 1);
 
     if (!top_->swap(top_old, top_new)) {
-      if (backoff(Opcode::Push, &item)) {
+      if (backoff(Opcode::Push, &item, tid)) {
         return true;
       }
     } else {
@@ -234,8 +235,8 @@ bool EliminationBackoffStack<T>::push(T item) {
 }
 
 template<typename T>
-bool EliminationBackoffStack<T>::pop(T *item) {
-      if (backoff(Opcode::Pop, item)) {
+bool EliminationBackoffStack<T>::pop(T *item, const int &tid) {
+      if (backoff(Opcode::Pop, item, tid)) {
         return true;
       }
   NodePtr top_old;
@@ -248,7 +249,7 @@ bool EliminationBackoffStack<T>::pop(T *item) {
     top_new = NodePtr(top_old.value()->next, top_old.tag() + 1);
 
     if (!top_->swap(top_old, top_new)) {
-      if (backoff(Opcode::Pop, item)) {
+      if (backoff(Opcode::Pop, item, tid)) {
         return true;
       }
     } else {

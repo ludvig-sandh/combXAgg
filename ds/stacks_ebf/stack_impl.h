@@ -34,7 +34,16 @@
 
 //     top_node() { topptr = nullptr; }
 // };
-#define top_ top_node<K, V>
+// #define top_ top_node<K, V>
+
+//useless fwd declaration. I don't intend to use this node. Using EBS internal node type instead. This means setbench reclaimer won't be able to reclaim this stack.
+template<typename K, typename V>
+struct node_t
+{
+    K key;
+    V val;
+};
+
 template <typename K, typename V, class RecManager>
 class Stack {
    private:
@@ -46,7 +55,19 @@ class Stack {
    public:
     Stack(const int num_threads, const int _min_key, const int _max_key,
           const V _NO_VALUE, unsigned int id) {
-            ebs = new scal::EliminationBackoffStack<uint64_t>(g_num_threads + 1, size_collision, FLAGS_delay);
+
+        // uint64 FLAGS_collision = 0; //, "size of the collision array");
+        uint64_t FLAGS_delay = 15000; //, "time waiting in the collision array");
+
+        uint64_t size_collision = (num_threads + 1)/10;
+        // if (FLAGS_collision != 0) {
+        //     size_collision = FLAGS_collision;
+        // }
+        if (size_collision == 0) { 
+            size_collision = 1;
+        }
+        
+        ebs = new scal::EliminationBackoffStack<uint64_t>(num_threads + 1, size_collision, FLAGS_delay);
     }
     ~Stack() {}
 
@@ -72,7 +93,7 @@ class Stack {
         // // COUTATOMICTID("dummy pushing " << value << std::endl);
         // success = true;
         // top.top_lock.unlock();
-        ebs->push(value);
+        // ebs->push(value);
 
         return success;
     }

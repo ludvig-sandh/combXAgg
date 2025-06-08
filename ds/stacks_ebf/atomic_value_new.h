@@ -18,7 +18,7 @@
 
 typedef uint64_t AtomicRaw;
 
-template<typename T, int ALIGN, int PAD> class AtomicTaggedValue;
+template<typename T, int ALIGN, int PAD_EBS> class AtomicTaggedValue;
 
 template<typename T>
 class TaggedValue {
@@ -92,12 +92,12 @@ class TaggedValue {
 
   raw_type raw_;
 
-  template<typename S, int ALIGN, int PAD>
+  template<typename S, int ALIGN, int PAD_EBS>
   friend class AtomicTaggedValue;
 };
 
 
-template<typename T, int ALIGN = 0, int PAD = 0>
+template<typename T, int ALIGN = 0, int PAD_EBS = 0>
 class AtomicTaggedValue {
  public:
   _always_inline AtomicTaggedValue() : raw_atomic_(0) {}
@@ -137,8 +137,8 @@ class AtomicTaggedValue {
 
  private:
   std::atomic<typename TaggedValue<T>::raw_type> raw_atomic_;
-  uint8_t _padding[ (PAD != 0) ?
-      PAD - sizeof(std::atomic<typename TaggedValue<T>::raw_type>) : 0 ];
+  uint8_t _padding[ (PAD_EBS != 0) ?
+      PAD_EBS - sizeof(std::atomic<typename TaggedValue<T>::raw_type>) : 0 ];
 };
 
 #endif  // SCAL_UTIL_ATOMIC_VALUE_NEW_H_
