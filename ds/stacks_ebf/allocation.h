@@ -44,11 +44,19 @@ _always_inline size_t RoundSize(uint64_t size, uint64_t round_to) {
 
 _always_inline void* MallocAligned(size_t size, size_t alignment) {
   void* mem;
+  
+  COUTATOMIC("BEGIN MallocAligned, size="<< size<<" alignment="<< alignment<<std::endl);
+  
   if (posix_memalign(reinterpret_cast<void**>(&mem),
-                     alignment, size)) {
+  alignment, size)) {
+    
+    
     perror("posix_memalign");
     abort();
   }
+
+  COUTATOMIC("END MallocAligned, size="<< size<<" alignment="<< alignment<<std::endl);
+
   return mem;
 }
 
@@ -106,6 +114,7 @@ ThreadLocalAllocator& ThreadLocalAllocator::Get() {
       pthread_getspecific(tla_key));
   if (tla == NULL) {
     const size_t tla_size = RoundSize(sizeof(*tla), kPageSize);
+    COUTATOMIC("ThreadLocalAllocator::Get tla_size=" << tla_size<< std::endl);
     void* mem = scal::MallocAligned(tla_size, kPageSize);
     tla = new(mem) ThreadLocalAllocator();
     if (pthread_setspecific(tla_key, tla)) {
@@ -119,6 +128,9 @@ ThreadLocalAllocator& ThreadLocalAllocator::Get() {
 
 void ThreadLocalAllocator::Init(size_t prealloc_pages, bool touch_memory) {
   prealloc_size_ = kPageSize * prealloc_pages;
+
+  COUTATOMIC("ThreadLocalAllocator::Init prealloc_size_=" << prealloc_size_<< std::endl);
+
   start_ = reinterpret_cast<uintptr_t>(
       scal::MallocAligned(prealloc_size_, kPageSize));
   ResetBuffer();

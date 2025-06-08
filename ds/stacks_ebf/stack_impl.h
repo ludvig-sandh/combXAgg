@@ -66,10 +66,18 @@ class Stack {
         if (size_collision == 0) { 
             size_collision = 1;
         }
-        
+
+        COUTATOMIC("STACK" << std::endl);   
         ebs = new scal::EliminationBackoffStack<uint64_t>(num_threads + 1, size_collision, FLAGS_delay);
     }
     ~Stack() {}
+
+    void initThread(const int tid) {
+        COUTATOMIC("begin initThread" << std::endl);
+        // const size_t tlsize = scal::HumanSizeToPages("m\n", 10);
+        scal::ThreadLocalAllocator::Get().Init(1024/* 10mb */, true);
+        COUTATOMIC("end initThread" << std::endl);
+    }
 
     V peek(const int &tid) {
         V retVal;
