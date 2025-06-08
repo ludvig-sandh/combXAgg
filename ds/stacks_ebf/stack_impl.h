@@ -84,7 +84,7 @@ class Stack {
         return retVal;
     }
 
-    bool push(const int &tid, const V &value) {
+    bool push(const int &tid, const K value) {
         bool success = false;
         // nodeptr my_node = new node_t<K, V>(0, value);
         // top.top_lock.lock();
@@ -93,13 +93,14 @@ class Stack {
         // // COUTATOMICTID("dummy pushing " << value << std::endl);
         // success = true;
         // top.top_lock.unlock();
-        // ebs->push(value);
+        success = ebs->push(value, tid);
 
         return success;
     }
 
     bool pop(const int &tid) {
         bool success = false;
+        long unsigned int * value;
         // top.top_lock.lock();
         // nodeptr temp = top.topptr;
         // if (!temp) {
@@ -110,6 +111,8 @@ class Stack {
         // // COUTATOMICTID("DUMMY popping " << std::endl);
         // top.top_lock.unlock();
         // success = true;
+        success = ebs->pop(value, tid);
+        
         return success;
     }
 };

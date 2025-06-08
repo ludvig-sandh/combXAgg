@@ -98,7 +98,7 @@
          setbench_error("insert-replace functionality not implemented for this data structure");
      }
      V insertIfAbsent(const int tid, const K& key, const V& val) {
-        ds->push(tid, val);
+        ds->push(tid, key);
         return getNoValue();
      }
      V erase(const int tid, const K& key) {
