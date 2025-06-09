@@ -1,4 +1,4 @@
-FLAGS =
+FLAGS = -lgflags
 LDFLAGS =
 GPP = g++
 
@@ -38,7 +38,7 @@ endif
 
 no_optimize=0
 ifeq ($(no_optimize), 1)
-	FLAGS += -O0 -fno-inline-functions -fno-inline
+	FLAGS += -O0 -fno-inline-functions -fno-inline -fpermissive
 else
 	FLAGS += -O3 -fpermissive
 endif

@@ -476,7 +476,7 @@ inline uint64_t synchGetMachineModel(void) {
         : "=m"(cpu_model[0]), "=m"(cpu_model[4]), "=m"(cpu_model[8])::"%eax",
           "%ebx", "%edx", "%ecx", "memory");
 #ifdef DEBUG
-    fprintf(stderr, "DEBUG: Machine model: %s\n", cpu_model);
+    // fprintf(stderr, "DEBUG: Machine model: %s\n", cpu_model);
 #endif
 
     if (strcmp(cpu_model, "AuthenticAMD") == 0)
