@@ -84,7 +84,9 @@
         "numbers": "cpp",
         "semaphore": "cpp",
         "span": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "condition_variable": "cpp",
+        "cinttypes": "cpp"
     },
     "svg.preview.background": "black",
     "python.pythonPath": "/usr/bin/python3",
