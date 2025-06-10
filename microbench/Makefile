@@ -1,4 +1,4 @@
-FLAGS = -lgflags
+FLAGS = #-lgflags
 LDFLAGS =
 GPP = g++
 

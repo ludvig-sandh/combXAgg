@@ -101,11 +101,10 @@ template<typename T>
 EliminationBackoffStack<T>::EliminationBackoffStack(
     uint64_t num_threads, uint64_t size_collision, uint64_t delay) 
   : num_threads_(num_threads), size_collision_(size_collision), delay_(delay) {
-  COUTATOMIC("EliminationBackoffStack" << std::endl<<std::fflush(stdout));
+  VERBOSE COUTATOMIC("ctorbegin EliminationBackoffStack" << std::endl);
 
-    top_ = new AtomicNodePtr();
+  top_ = new AtomicNodePtr();
 
-  COUTATOMIC("EliminationBackoffStack" << std::endl<<std::fflush(stdout));
   operations_ = static_cast<Operation**>(
       ThreadLocalAllocator::Get().CallocAligned(num_threads, 
           sizeof(Operation*), kCachePrefetch * 4));

@@ -62,12 +62,12 @@ class Stack {
     bool push(const int &tid, const V &value) {
         bool success = false;
         nodeptr my_node = new node_t<K, V>(0, value);
-        top.top_lock.lock();
+        // top.top_lock.lock();
         my_node->next = top.topptr;
         top.topptr = my_node;
         // COUTATOMICTID("dummy pushing " << value << std::endl);
         success = true;
-        top.top_lock.unlock();
+        // top.top_lock.unlock();
         return success;
     }
 

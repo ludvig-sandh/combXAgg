@@ -109,6 +109,7 @@ inline static RetVal serialPushPop(void *state, ArgVal arg, int pid) {
         CCStackStruct *st = (CCStackStruct *)state;
         Node *node;
 
+        // node = new Node();//synchAllocObj(&pool_node);
         node = synchAllocObj(&pool_node);
         node->next = st->top;
         node->val = arg;

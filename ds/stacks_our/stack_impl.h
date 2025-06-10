@@ -14,7 +14,7 @@
 //FIXME: creating unnecessary aggregators/
 //FIXME: memory leaks
 
-#define MAX_AGGREGATOR_THREADS 48
+#define MAX_AGGREGATOR_THREADS 1
 #define NUMBER_AGGREGATORS 64
 
 #define CHOOSE_AGGREGATOR(tId) (aggregator[(tId) / MAX_AGGREGATOR_THREADS])
@@ -26,73 +26,78 @@ class node_t {
     public:
     K key;
     V val;
-    PAD;
+    //PAD
     std::atomic<node_t<K, V> *> next;
-    PAD;
+    //PAD
 
     node_t(K key, V val) {
         key = key;
         val = val;
         next = nullptr;
     }
-    PAD;
+    //PAD
 };
 #define nodeptr node_t<K, V> *
 
 template <typename K, typename V>
 struct Batch {
-    PAD;
+    //PAD
     std::atomic<nodeptr> eliminationArray[MAX_AGGREGATOR_THREADS];
-    PAD;
+    //PAD
     std::atomic<int> pushCounter;
-    PAD;
+    //PAD
     std::atomic<int> popCounter;
-    PAD;
+    //PAD
     std::atomic<int> finalPushCount;
-    PAD;
+    //PAD
     std::atomic<int> finalPopCount;
-    PAD;
+    //PAD
     std::atomic<bool> isBatchApplied;
-    PAD;
+    //PAD
     std::atomic_flag hasLeader;
     std::atomic<nodeptr> subStackTop;
-    // PAD;
+    // //PAD
     std::atomic<nodeptr> subStackBot;
-    PAD;
+    //PAD
     // struct Batch *next;
 };
 
 template <typename K, typename V>
 struct Aggregator {
-    PAD;
+    //PAD
     std::atomic<struct Batch<K, V> *> batch;
-    PAD;
+    //PAD
 };
 
 template <typename K, typename V, class RecManager>
 class Stack {
    private:
-    PAD;
+    //PAD
     std::atomic<nodeptr> main_top;
-    PAD;
+    //PAD
     Aggregator<K, V> aggregator[NUMBER_AGGREGATORS];
-    PAD;
+    //PAD
 
     struct Batch<K, V> *CreateNewBatch() {
         struct Batch<K, V> *newBatch = new Batch<K, V>;
-        newBatch->popCounter.store(0, std::memory_order_relaxed);
-        newBatch->pushCounter.store(0,std::memory_order_relaxed);
-        newBatch->finalPopCount.store(0, std::memory_order_relaxed);
-        newBatch->finalPushCount.store(0, std::memory_order_relaxed);
-        // newBatch->hasLeader.store(false, std::memory_order_relaxed);
-        newBatch->hasLeader.clear(std::memory_order_relaxed);
-        newBatch->isBatchApplied.store(false, std::memory_order_relaxed);
-        newBatch->subStackBot.store(NULL, std::memory_order_relaxed);
-        newBatch->subStackTop.store(NULL, std::memory_order_relaxed);
+
+        memset(newBatch, 0, sizeof(Batch<K, V>));
+
+        // newBatch->popCounter.store(0, std::memory_order_relaxed);
+        // newBatch->pushCounter.store(0,std::memory_order_relaxed);
+        // newBatch->finalPopCount.store(0, std::memory_order_relaxed);
+        // newBatch->finalPushCount.store(0, std::memory_order_relaxed);
+        // // newBatch->hasLeader.store(false, std::memory_order_relaxed);
+        // newBatch->hasLeader.clear(std::memory_order_relaxed);
+        // newBatch->isBatchApplied.store(false, std::memory_order_relaxed);
+        // newBatch->subStackBot.store(NULL, std::memory_order_relaxed);
+        // newBatch->subStackTop.store(NULL, std::memory_order_relaxed);
+
         // newBatch->next = NULL;
-        for (size_t i = 0; i < MAX_AGGREGATOR_THREADS; i++) {
-            newBatch->eliminationArray[i].store(NULL, std::memory_order_relaxed);
-        }
+        // for (size_t i = 0; i < MAX_AGGREGATOR_THREADS; i++) {
+            // newBatch->eliminationArray[i].store(NULL, std::memory_order_relaxed);
+            // memset(newBatch->eliminationArray, 0, sizeof(nodeptr)*MAX_AGGREGATOR_THREADS);
+        // }
         return newBatch;
     }
 
@@ -113,7 +118,7 @@ class Stack {
                               // to main(same as aggregation of F&A).
     {
         while (true) {
-            struct node_t<K, V> *top = main_top;
+            struct node_t<K, V> *top = main_top; //load top
             subStackBot->next = top;
             if (main_top.compare_exchange_strong(top, subStackTop)) return;
         }
@@ -163,7 +168,8 @@ class Stack {
                 !myBatch->hasLeader.test_and_set())  // Should be test and set.
             {
                 FreezeBatch(myAggregator, myBatch);
-            } else {
+            } 
+            else {
                 while (
                     myBatch ==
                     myAggregator->batch)  // Spin until freezing has finished.

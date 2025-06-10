@@ -45,7 +45,7 @@ _always_inline size_t RoundSize(uint64_t size, uint64_t round_to) {
 _always_inline void* MallocAligned(size_t size, size_t alignment) {
   void* mem;
   
-  COUTATOMIC("BEGIN MallocAligned, size="<< size<<" alignment="<< alignment<<std::endl);
+  VERBOSE COUTATOMIC("BEGIN MallocAligned, size="<< size<<" alignment="<< alignment<<std::endl);
   
   if (posix_memalign(reinterpret_cast<void**>(&mem),
   alignment, size)) {
@@ -55,7 +55,7 @@ _always_inline void* MallocAligned(size_t size, size_t alignment) {
     abort();
   }
 
-  COUTATOMIC("END MallocAligned, size="<< size<<" alignment="<< alignment<<std::endl);
+  VERBOSE COUTATOMIC("END MallocAligned, size="<< size<<" alignment="<< alignment<<std::endl);
 
   return mem;
 }
@@ -114,7 +114,7 @@ ThreadLocalAllocator& ThreadLocalAllocator::Get() {
       pthread_getspecific(tla_key));
   if (tla == NULL) {
     const size_t tla_size = RoundSize(sizeof(*tla), kPageSize);
-    COUTATOMIC("ThreadLocalAllocator::Get tla_size=" << tla_size<< std::endl);
+    VERBOSE COUTATOMIC("ThreadLocalAllocator::Get tla_size=" << tla_size<< std::endl);
     void* mem = scal::MallocAligned(tla_size, kPageSize);
     tla = new(mem) ThreadLocalAllocator();
     if (pthread_setspecific(tla_key, tla)) {
@@ -129,7 +129,7 @@ ThreadLocalAllocator& ThreadLocalAllocator::Get() {
 void ThreadLocalAllocator::Init(size_t prealloc_pages, bool touch_memory) {
   prealloc_size_ = kPageSize * prealloc_pages;
 
-  COUTATOMIC("ThreadLocalAllocator::Init prealloc_size_=" << prealloc_size_<< std::endl);
+  VERBOSE COUTATOMIC("ThreadLocalAllocator::Init prealloc_size_=" << prealloc_size_<< std::endl);
 
   start_ = reinterpret_cast<uintptr_t>(
       scal::MallocAligned(prealloc_size_, kPageSize));
@@ -145,6 +145,7 @@ void ThreadLocalAllocator::Init(size_t prealloc_pages, bool touch_memory) {
 
 void* ThreadLocalAllocator::Malloc(size_t size) {
   size = RoundSize(size, 2 * kWordSize);
+  VERBOSE COUTATOMIC("prealloc_size_" <<prealloc_size_<<std::endl);
   if (size > prealloc_size_) {
     fprintf(stderr, "unable to allocate %lu bytes through "
                     "thread-local allocation", size);
@@ -191,6 +192,9 @@ void* ThreadLocalAllocator::Calloc(size_t size, size_t num) {
 void* ThreadLocalAllocator::CallocAligned(
     size_t num, size_t size, size_t alignment) {
   const size_t alloc_size = RoundSize(num * size, 2 * kWordSize);
+
+  VERBOSE COUTATOMIC("ThreadLocalAllocator::CallocAligned "<<alloc_size<<" alignment= "<<alignment << std::endl);
+
   void* object = MallocAligned(alloc_size, alignment);
   memset(object, 0, alloc_size);
   return object;
