@@ -14,13 +14,18 @@
 // FIXME: creating unnecessary aggregators/
 // FIXME: memory leaks
 
-#define MAX_AGGREGATOR_THREADS 1
+#define MAX_AGGREGATOR_THREADS 48
 #define NUMBER_AGGREGATORS 64
 
 #define CHOOSE_AGGREGATOR(tId) (aggregator[(tId) / MAX_AGGREGATOR_THREADS])
 
 #include "./util/aggregatingFunnelCounter.hpp"
+#include "pool.h"
 #include "record_manager.h"
+
+// static __thread SynchPoolStruct pool_node CACHE_ALIGN;
+static __thread SynchPoolStruct pool_batch CACHE_ALIGN;
+static __thread bool init = false;
 
 template <typename K, typename V>
 class node_t {
@@ -81,8 +86,11 @@ class Stack {
     // PAD
 
     struct Batch<K, V> *CreateNewBatch() {
-        struct Batch<K, V> *newBatch = new Batch<K, V>;
-
+        struct Batch<K, V> *newBatch;
+        if (init)
+            newBatch = synchAllocObj(&pool_batch);
+        else
+            newBatch = new Batch<K, V>;
         // memset(newBatch, 0, sizeof(Batch<K, V>));
 
         newBatch->popCounter.store(0, std::memory_order_relaxed);
@@ -97,9 +105,10 @@ class Stack {
 
         // newBatch->next = NULL;
         for (size_t i = 0; i < MAX_AGGREGATOR_THREADS; i++) {
-        // newBatch->eliminationArray[i].store(NULL, std::memory_order_relaxed);
-        memset(newBatch->eliminationArray, 0,
-        sizeof(nodeptr)*MAX_AGGREGATOR_THREADS);
+            // newBatch->eliminationArray[i].store(NULL,
+            // std::memory_order_relaxed);
+            memset(newBatch->eliminationArray, 0,
+                   sizeof(nodeptr) * MAX_AGGREGATOR_THREADS);
         }
         return newBatch;
     }
@@ -171,8 +180,14 @@ class Stack {
     }
 
     bool push(const int &tid, const V &value) {
+        if (!init) {
+            // synchInitPool(&pool_node, sizeof(node_t<K, V>));
+            synchInitPool(&pool_batch, sizeof(Batch<K, V>));
+            init = true;
+        }
         Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
         nodeptr myNode = new node_t<K, V>(0, value);
+        // nodeptr myNode = synchAllocObj(&pool_node);
         while (true) {
             struct Batch<K, V> *myBatch = myAggregator->batch;
             int pushIndex = myBatch->pushCounter.fetch_add(
@@ -250,6 +265,11 @@ class Stack {
     }
 
     bool pop(const int &tid) {
+        if (!init) {
+            // synchInitPool(&pool_node, sizeof(node_t<K, V>));
+            synchInitPool(&pool_batch, sizeof(Batch<K, V>));
+            init = true;
+        }
         Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
         bool success = false;
         while (true) {
@@ -281,7 +301,9 @@ class Stack {
                 }
                 nodeptr my_ptr = myBatch->eliminationArray[popIndex].load(
                     std::memory_order_acquire);
-                return my_ptr->val;
+                V returnValue = my_ptr->val;
+                // synchRecycleObj(&pool_node, my_ptr);
+                return returnValue;
             }
             if (popIndex ==
                 myBatch->finalPushCount.load(std::memory_order_acquire)) {
