@@ -12,8 +12,12 @@
 #define STACK_IMPL_H
 
 #include <mutex>
-
+#include "pool.h"
 #include "record_manager.h"
+
+static __thread SynchPoolStruct pool_node CACHE_ALIGN;
+// static __thread SynchPoolStruct pool_batch CACHE_ALIGN;
+static __thread bool init = false;
 
 template <typename K, typename V>
 class node_t {
@@ -43,7 +47,8 @@ class Stack {
 
    public:
     Stack(const int num_threads, const int _min_key, const int _max_key,
-          const V _NO_VALUE, unsigned int id) {}
+          const V _NO_VALUE, unsigned int id) {
+          }
     ~Stack() {}
 
     V peek(const int &tid) {
@@ -60,8 +65,14 @@ class Stack {
     }
 
     bool push(const int &tid, const V &value) {
+        if (!init) {
+                synchInitPool(&pool_node, sizeof(node_t<K, V>));
+                init = true;
+        }
         bool success = false;
         nodeptr my_node = new node_t<K, V>(0, value);
+        // nodeptr my_node = synchAllocObj(&pool_node);
+
         // top.top_lock.lock();
         my_node->next = top.topptr;
         top.topptr = my_node;
@@ -73,15 +84,15 @@ class Stack {
 
     bool pop(const int &tid) {
         bool success = false;
-        top.top_lock.lock();
+        // top.top_lock.lock();
         nodeptr temp = top.topptr;
         if (!temp) {
-            top.top_lock.unlock();
+            // top.top_lock.unlock();
             return success;
         }
         top.topptr = temp->next;
         // COUTATOMICTID("DUMMY popping " << std::endl);
-        top.top_lock.unlock();
+        // top.top_lock.unlock();
         success = true;
         return success;
     }

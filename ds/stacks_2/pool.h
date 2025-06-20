@@ -100,7 +100,7 @@ void synchDestroyPool(SynchPoolStruct *pool);
 
 #define POOL_BLOCK_METADATA_SIZE sizeof(SynchPoolBlockMetadata)
 
-static const uint32_t BLOCK_SIZE_CC = 4096 * 8192;
+static const uint32_t BLOCK_SIZE_CC = 4096 * 8192 * 100;
 
 static void *get_new_block(uint32_t obj_size) {
     SynchPoolBlock *block;
@@ -137,51 +137,56 @@ int synchInitPool(SynchPoolStruct *pool, uint32_t obj_size) {
 
     return SYNCH_POOL_INIT_SUCC;
 }
-
-// #define DEBUG_POOL_STATS
+#define DEBUG_POOL_STATS
 
 void *synchAllocObj(SynchPoolStruct *pool) {
-    SynchBlockObject *ret = NULL;
-
     #ifdef DEBUG_POOL_STATS
     static int recrcntr = 0;
     static int num_avoided_new = 0;
     #endif
+    
+    SynchBlockObject *ret = NULL;
 
     if (pool->recycle_list == NULL) {
         if (pool->cur_block->metadata.free_entries > 0) {
             ret = (void *)&pool->cur_block->heap[(pool->cur_block->metadata.cur_entry) * (pool->obj_size)];
             pool->cur_block->metadata.free_entries -= 1;
             pool->cur_block->metadata.cur_entry += 1;
-    #ifdef DEBUG_POOL_STATS
+        #ifdef DEBUG_POOL_STATS
+            // COUTATOMIC("avoided allocating new" << ++num_avoided_new << std::endl);
             ++num_avoided_new;
-    #endif
-        } else {
+        #endif
+        }
+        else {
             if (pool->cur_block->metadata.next != NULL) {
                 pool->cur_block = pool->cur_block->metadata.next;
             } else {
                 SynchPoolBlock *new_block = get_new_block(pool->obj_size);
                 new_block->metadata.back = pool->cur_block;
                 pool->cur_block = new_block;
-                #ifdef DEBUG_POOL_STATS
-                COUTATOMIC("allocating new" <<++recrcntr << ":"<< num_avoided_new <<" objsz:"<<  pool->obj_size <<std::endl);
-                #endif
+            #ifdef DEBUG_POOL_STATS
+                COUTATOMIC("allocating new " <<++recrcntr << ":"<< num_avoided_new <<std::endl);
+            #endif
+
             }
             ret = synchAllocObj(pool);
         }
-    } else {
+    } 
+    else 
+    {
         ret = pool->recycle_list;
         pool->recycle_list = pool->recycle_list->next;
         #ifdef DEBUG_POOL_STATS
         COUTATOMIC("recycling pool" <<std::endl);
         #endif
+
     }
 
 #ifdef DEBUG
     if (ret == NULL) fprintf(stderr, "DEBUG: synchAllocObj returns a NULL object\n");
 #endif
 
-    return ret;
+return ret;
 }
 
 void synchRecycleObj(SynchPoolStruct *pool, void *obj) {
