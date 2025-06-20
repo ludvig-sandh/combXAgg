@@ -8,7 +8,7 @@
 
 #include "epoch.hpp"
 
-static const int max_thread_count = std::thread::hardware_concurrency();
+static const int max_thread_count = 256; //FIXME: std::thread::hardware_concurrency();
 
 class my_mutex {
    public:

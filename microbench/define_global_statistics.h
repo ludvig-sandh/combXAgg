@@ -53,6 +53,27 @@
       __AND gstats_output_item(PRINT_RAW, MIN, TOTAL) \
       __AND gstats_output_item(PRINT_RAW, MAX, TOTAL) \
     }) \
+    gstats_handle_stat(LONG_LONG, comb_batchsize, 1, { \
+        gstats_output_item(PRINT_RAW, AVERAGE, TOTAL) \
+      __AND gstats_output_item(PRINT_RAW, MIN, TOTAL) \
+      __AND gstats_output_item(PRINT_RAW, MAX, TOTAL) \
+    }) \
+    gstats_handle_stat(LONG_LONG, comb_numbatchpush, 1, { \
+        gstats_output_item(PRINT_RAW, AVERAGE, TOTAL) \
+      __AND gstats_output_item(PRINT_RAW, MIN, TOTAL) \
+      __AND gstats_output_item(PRINT_RAW, MAX, TOTAL) \
+    }) \
+    gstats_handle_stat(LONG_LONG, comb_numbatchpop, 1, { \
+        gstats_output_item(PRINT_RAW, AVERAGE, TOTAL) \
+      __AND gstats_output_item(PRINT_RAW, MIN, TOTAL) \
+      __AND gstats_output_item(PRINT_RAW, MAX, TOTAL) \
+    }) \
+    gstats_handle_stat(LONG_LONG, comb_batchadd_attempts, 25000, { \
+        gstats_output_item(PRINT_RAW, COUNT, BY_THREAD) \
+      __AND gstats_output_item(PRINT_RAW, AVERAGE, TOTAL) \
+      __AND gstats_output_item(PRINT_RAW, MIN, TOTAL) \
+      __AND gstats_output_item(PRINT_RAW, MAX, TOTAL) \
+    }) \    
     gstats_handle_stat(LONG_LONG, timer_duration, 1, {}) \
     gstats_handle_stat(LONG_LONG, duration_all_ops, 1, { /* note: used by brown_ext_ist_lf */ \
             gstats_output_item(PRINT_RAW, SUM, TOTAL) \
