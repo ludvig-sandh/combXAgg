@@ -14,11 +14,6 @@
 // FIXME: creating unnecessary aggregators/
 // FIXME: memory leaks
 
-<<<<<<< HEAD
-// #define USE_AF
-
-=======
->>>>>>> 86d8c877ddf62fe557d898b1fbf1d75150031a5c
 #define MAX_AGGREGATOR_THREADS 48
 #define NUMBER_AGGREGATORS 64
 
@@ -29,13 +24,10 @@
 #include "pool.h"
 #include "record_manager.h"
 
-<<<<<<< HEAD
 #include "define_global_statistics.h"
-=======
 // static __thread SynchPoolStruct pool_node CACHE_ALIGN;
 static __thread SynchPoolStruct pool_batch CACHE_ALIGN;
 static __thread bool init = false;
->>>>>>> 86d8c877ddf62fe557d898b1fbf1d75150031a5c
 
 template <typename K, typename V>
 class alignas(BYTES_IN_CACHE_LINE) node_t {
