@@ -57,7 +57,7 @@ class Stack {
         : _top(NULL) {
         object_struct =
             synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(HStackStruct));
-        HStackInit(object_struct, num_threads);
+        HStackInit(object_struct, num_threads, 2/* FIXME: pass from cmdline */);
     }
     ~Stack() {}
 

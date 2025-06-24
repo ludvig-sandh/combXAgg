@@ -115,6 +115,27 @@ inline void *synchGetMemory(size_t size);
 /// @param size The size of the memory area.
 /// @return In case of error, NULL is returned. In case of success a pointer to the allocated memory area is returned.
 inline void *synchGetAlignedMemory(size_t align, size_t size);
+// {
+//         void *p;
+
+
+// // FIXME: UNCOMMENT NUMA stuff
+// // #ifdef SYNCH_NUMA_SUPPORT
+// //     p = numa_alloc_local(size + align);
+// //     long plong = (long)p;
+// //     plong += align;
+// //     plong &= ~(align - 1);
+// //     p = (void *)plong;
+// // #else
+//     p = (void *)memalign(align, size);
+// // #endif
+
+//     if (p == NULL) {
+//         perror("memory allocation fail");
+//         exit(1);
+//     } else
+//         return p;
+// }
 
 /// @brief This function frees memory allocated with either getMemory() or synchGetAlignedMemory() functions.
 ///
