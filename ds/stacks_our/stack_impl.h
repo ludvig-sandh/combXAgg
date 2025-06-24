@@ -15,7 +15,7 @@
 // FIXME: memory leaks
 
 #define MAX_AGGREGATOR_THREADS 48
-#define NUMBER_AGGREGATORS 64
+#define NUMBER_AGGREGATORS 8 //cant have more than 8 agg for 192 threads with 48 max threads per agg
 
 #define CHOOSE_AGGREGATOR(tId) (aggregator[(tId) / MAX_AGGREGATOR_THREADS])
 
@@ -30,7 +30,7 @@ static __thread SynchPoolStruct pool_batch CACHE_ALIGN;
 static __thread bool init = false;
 
 // #define USE_POOLS
-// #define USE_BACKOFF
+// #define USE_BACKOFF // doesn't help us.
 
 template <typename K, typename V>
 class alignas(BYTES_IN_CACHE_LINE) node_t {
@@ -184,8 +184,8 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
             while (!batch->eliminationArray[leaderIndex + i].load(
                 std::memory_order_acquire))  // Wait for Push to write value.
             {
-#if USE_BACKOFF
-                    _mm_pause();
+#ifdef USE_BACKOFF
+                    // _mm_pause();
 #endif
             }
             nodeptr tempNode = batch->eliminationArray[leaderIndex + i].load(
@@ -252,7 +252,7 @@ nodeptr myNode = new node_t<K, V>(0, value);
                     myBatch ==
                     myAggregator->batch)  // Spin until freezing has finished.
                 {
-                #if USE_BACKOFF
+                #ifdef USE_BACKOFF
                     _mm_pause();
 #endif
                 }
@@ -282,8 +282,8 @@ nodeptr myNode = new node_t<K, V>(0, value);
                     myBatch->isBatchApplied.load(std::memory_order_acquire) ==
                     false)  // Wait for leader to apply to main.
                 {
-                #if USE_BACKOFF
-                    _mm_pause();
+                #ifdef USE_BACKOFF
+                    // _mm_pause();
 #endif
 
                 }
@@ -330,7 +330,7 @@ nodeptr myNode = new node_t<K, V>(0, value);
                 FreezeBatch(myAggregator, myBatch);
             } else {
                 while (myBatch == myAggregator->batch) {
-#if USE_BACKOFF
+#ifdef USE_BACKOFF
                     _mm_pause();
 #endif
                 }
@@ -351,8 +351,8 @@ nodeptr myNode = new node_t<K, V>(0, value);
                     std::memory_order_acquire))  // Wait for Push
                                                  // to write value.
                 {
-                    #if USE_BACKOFF
-                    _mm_pause();
+                    #ifdef USE_BACKOFF
+                    // _mm_pause();
 #endif
                 }
                 nodeptr my_ptr = myBatch->eliminationArray[popIndex].load(
@@ -372,8 +372,8 @@ nodeptr myNode = new node_t<K, V>(0, value);
             } else {
                 while (myBatch->isBatchApplied.load(
                            std::memory_order_acquire) == false) {
-#if USE_BACKOFF
-                    _mm_pause();
+#ifdef USE_BACKOFF
+                    // _mm_pause();
 #endif
                 }
             }
