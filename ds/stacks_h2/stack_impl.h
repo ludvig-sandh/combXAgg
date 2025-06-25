@@ -12,7 +12,7 @@
 #define STACK_IMPL_H
 
 #include <hstack.h>
-#include <primitives.h>
+#include "primitives.h"
 
 #include "record_manager.h"
 
@@ -56,8 +56,8 @@ class Stack {
           const V _NO_VALUE, unsigned int id)
         : _top(NULL) {
         object_struct = synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(HStackStruct));
-        HStackInit(object_struct, synchGetNCores(), HSYNCH_DEFAULT_NUMA_POLICY);
-        COUTATOMIC("Stack object initialized with " << synchGetNCores() << " threads and " << HSYNCH_DEFAULT_NUMA_POLICY << " NUMA nodes." << std::endl);
+        HStackInit(object_struct, num_threads, HSYNCH_DEFAULT_NUMA_POLICY);
+        // COUTATOMIC("Stack object initialized with " << synchGetNCores() << " threads and " << HSYNCH_DEFAULT_NUMA_POLICY << " NUMA nodes." << std::endl);
     }
     ~Stack() {}
 
@@ -83,8 +83,7 @@ class Stack {
         // if (init[tid]) return;
         // else init[tid] = !init[tid];
         // recmgr->initThread(tid);
-        // COUTATOMICTID("Initializing thread " << tid << std::endl);
-
+        COUTATOMICTID("Initializing thread " << tid << std::endl);
         threadData[tid].th_state = reinterpret_cast<HStackThreadState *>(
             synchGetAlignedMemory(CACHE_LINE_SIZE, sizeof(HStackThreadState)));
 
