@@ -31,7 +31,7 @@ void synchWaitForAllFibers(void);
 /// an integer number between 0 and N-1, where N is the number of active fibers in the current posix thread.
 int32_t synchCurrentFiberIndex(void);
 
-#endif
+
 
 
 // #include <uthreads.h>
@@ -151,3 +151,5 @@ void synchWaitForAllFibers(void) {  // Execute the fibers until they quit
 int32_t synchCurrentFiberIndex(void) {
     return currentFiber;
 }
+
+#endif

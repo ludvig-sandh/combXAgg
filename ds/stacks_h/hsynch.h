@@ -71,7 +71,7 @@ typedef struct HSynchStruct {
     CLHLockStruct *central_lock CACHE_ALIGN;
     /// @brief A tail to the list of announced requests.
     HSynchNodePtr *Tail CACHE_ALIGN;
-#ifdef DEBUG
+#ifdef DEBUG_STACKH
     volatile uint64_t counter CACHE_ALIGN;
     volatile int rounds;
 #endif
@@ -161,13 +161,13 @@ RetVal HSynchApplyOp(HSynchStruct *l, HSynchThreadState *st_thread, RetVal (*sfu
     if (cur->completed) // I have been helped
         return cur->arg_ret;
     CLHLock(l->central_lock, pid);
-#ifdef DEBUG
+#ifdef DEBUG_STACKH
     l->rounds++;
 #endif
     while (counter < help_bound && p->next != NULL) {
         synchReadPrefetch(p->next);
         counter++;
-#ifdef DEBUG
+#ifdef DEBUG_STACKH
         l->counter++;
 #endif
         tmp_next = p->next;
@@ -236,8 +236,8 @@ void HSynchThreadStateInit(HSynchStruct *l, HSynchThreadState *st_thread, int pi
     synchCASPTR(&l->Tail[node_of_thread].ptr, NULL, last_node);
     node_index = synchFAA32(&l->node_indexes[node_of_thread], 1);
     st_thread->next_node = l->nodes[node_of_thread] + node_index;
-#ifdef DEBUG
-    fprintf(stderr, "DEBUG: thread_id: %d -- running_core: %d -- running_node: %d -- hsynch_node: %d\n",
+#ifdef DEBUG_STACKH
+    fprintf(stderr, "DEBUG_STACKH: thread_id: %d -- running_core: %d -- running_node: %d -- hsynch_node: %d\n",
             pid, synchGetPreferredCore(), synchGetPreferredNumaNode(), node_of_thread);
 #endif
 }
@@ -297,7 +297,7 @@ void HSynchStructInit(HSynchStruct *l, uint32_t nthreads, uint32_t numa_regions)
         l->nodes[i] = NULL;
         l->Tail[i].ptr = NULL;
     }
-#ifdef DEBUG
+#ifdef DEBUG_STACKH
     l->rounds = l->counter = 0;
 #endif
     synchStoreFence();

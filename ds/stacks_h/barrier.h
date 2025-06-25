@@ -45,8 +45,6 @@ inline void synchBarrierLeave(SynchBarrier *bar);
 /// @param bar A pointer to an instance of the barrier object.
 inline void synchBarrierLastLeave(SynchBarrier *bar);
 
-#endif
-
 // #include <barrier.h>
 #include <primitives.h>
 // #include <threadtools.h>
@@ -98,3 +96,5 @@ inline void synchBarrierLastLeave(SynchBarrier *bar) {
         synchResched();
     }
 }
+
+#endif

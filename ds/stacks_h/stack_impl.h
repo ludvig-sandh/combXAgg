@@ -55,19 +55,20 @@ class Stack {
     Stack(const int num_threads, const int _min_key, const int _max_key,
           const V _NO_VALUE, unsigned int id)
         : _top(NULL) {
-        object_struct =
-            synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(HStackStruct));
-        HStackInit(object_struct, num_threads, 2/* FIXME: pass from cmdline */);
+        object_struct = synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(HStackStruct));
+        HStackInit(object_struct, synchGetNCores(), HSYNCH_DEFAULT_NUMA_POLICY);
+        COUTATOMIC("Stack object initialized with " << synchGetNCores() << " threads and " << HSYNCH_DEFAULT_NUMA_POLICY << " NUMA nodes." << std::endl);
     }
     ~Stack() {}
 
     V peek(const int &tid) { return NULL; }
 
     bool push(const int &tid, const V &value) {
+        VERBOSE COUTATOMICTID("pushing " << std::endl);
         HStackPush(object_struct, threadData[tid].th_state, tid, tid);
-        bool success = true;
-        // COUTATOMICTID("dummy pushing " << value << std::endl);
-        return success;
+        VERBOSE COUTATOMICTID("pushed " << std::endl);
+        
+        return true;
     }
 
     bool pop(const int &tid) {
