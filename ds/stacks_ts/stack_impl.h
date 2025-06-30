@@ -13,28 +13,14 @@
 
 #include "record_manager.h"
 #include "ts_stack.h"
-
-
-#include <gflags/gflags.h>
-
-#include "datastructures/ts_timestamp.h"
 #include "ts_stack_buffer.h"
-#include "datastructures/ts_stack.h"
+#include "ts_timestamp.h"
 
-DEFINE_uint64(delay, 0, "delay in the insert operation");
-
-#define TS_DS TSStack<uint64_t, TSStackBuffer<uint64_t, HardwareTimestamp>, HardwareTimestamp>
+#define TS_DS                                                     \
+    TSStack<uint64_t, TSStackBuffer<uint64_t, HardwareTimestamp>, \
+            HardwareTimestamp>
 
 TS_DS *ts_;
-
-void* ds_new() {
-  ts_ = new TS_DS(g_num_threads + 1, FLAGS_delay);
-  return static_cast<void*>(ts_);
-}
-
-char* ds_get_stats(void) {
-  return ts_->ds_get_stats();
-}
 
 template <typename K, typename V>
 class node_t {
@@ -50,7 +36,9 @@ class Stack_WRAP {
    private:
    public:
     Stack_WRAP(const int num_threads, const int _min_key, const int _max_key,
-               const V _NO_VALUE, unsigned int id) {}
+               const V _NO_VALUE, unsigned int id) {
+        ts_ = new TS_DS(num_threads + 1, 0);
+    }
 
     ~Stack_WRAP() {}
 

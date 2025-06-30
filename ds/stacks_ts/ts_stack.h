@@ -9,9 +9,9 @@
 
 #include <atomic>
 
-#include "./util/malloc.h"
-#include "./util/platform.h"
-#include "./util/stack.h"
+#include "util/malloc.h"
+#include "util/platform.h"
+#include "util/stack.h"
 
 template <typename T, typename TSBuffer, typename Timestamp>
 class TSStack : public Stack<T> {
