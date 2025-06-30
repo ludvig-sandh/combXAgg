@@ -177,8 +177,8 @@ void *synchAllocObj(SynchPoolStruct *pool) {
         #endif
     }
 
-#ifdef DEBUG
-    if (ret == NULL) fprintf(stderr, "DEBUG: synchAllocObj returns a NULL object\n");
+#ifdef DEBUG_STACKH
+    if (ret == NULL) fprintf(stderr, "DEBUG_STACKH: synchAllocObj returns a NULL object\n");
 #endif
 
     return ret;

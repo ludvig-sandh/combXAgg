@@ -21,7 +21,7 @@ ifneq ($(use_asan), 0)
 	LDFLAGS += -fsanitize=address -static-libasan
 endif
 
-use_asserts=0
+use_asserts=1
 ifeq ($(use_asserts), 0)
 	FLAGS += -DNDEBUG
 endif
@@ -38,7 +38,7 @@ endif
 
 no_optimize=0
 ifeq ($(no_optimize), 1)
-	FLAGS += -O0 -fno-inline-functions -fno-inline -fpermissive
+	FLAGS += -O1 -fno-inline-functions -fno-inline -fpermissive
 else
 	FLAGS += -O3 -fpermissive
 endif
@@ -86,6 +86,9 @@ FLAGS += -DCPU_FREQ_GHZ=2.1 #$(shell ./experiments/get_cpu_ghz.sh)
 FLAGS += -DMEMORY_STATS=if\(1\) -DMEMORY_STATS2=if\(0\)
 FLAGS += -std=c++17 -mcx16 -gdwarf
 FLAGS += -fno-omit-frame-pointer
+FLAGS += -DUSE_GSTATS
+FLAGS += -DGSTATS_HANDLE_STATS
+
 #FLAGS += -DCALL_DEBUG_GC
 #FLAGS += -DNO_CLEANUP_AFTER_WORKLOAD ### avoid executing data structure destructors, to save teardown time at the end of each trial (useful with massive trees)
 #FLAGS += -DRAPID_RECLAMATION

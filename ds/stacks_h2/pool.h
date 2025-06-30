@@ -8,7 +8,7 @@
 #define _POOL_H_
 
 #include <stdint.h>
-#include <primitives.h>
+#include "primitives.h"
 
 /// @brief A struct for the block object.
 typedef struct SynchBlockObject {
@@ -88,7 +88,8 @@ void synchRollback(SynchPoolStruct *pool, uint32_t num_objs);
 /// @param pool A pointer to the pool of objects.
 void synchDestroyPool(SynchPoolStruct *pool);
 
-#endif
+
+
 
 
 
@@ -100,13 +101,13 @@ void synchDestroyPool(SynchPoolStruct *pool);
 
 #define POOL_BLOCK_METADATA_SIZE sizeof(SynchPoolBlockMetadata)
 
-static const uint32_t BLOCK_SIZE_CC = 4096 * 8192;
+static const uint32_t BLOCK_SIZEHS = 4096 * 8192;
 
 static void *get_new_block(uint32_t obj_size) {
     SynchPoolBlock *block;
-    block = synchGetAlignedMemory(CACHE_LINE_SIZE, BLOCK_SIZE_CC);
-    block->metadata.entries = (BLOCK_SIZE_CC - POOL_BLOCK_METADATA_SIZE) / obj_size;
-    block->metadata.free_entries = (BLOCK_SIZE_CC - POOL_BLOCK_METADATA_SIZE) / obj_size;
+    block = synchGetAlignedMemory(CACHE_LINE_SIZE, BLOCK_SIZEHS);
+    block->metadata.entries = (BLOCK_SIZEHS - POOL_BLOCK_METADATA_SIZE) / obj_size;
+    block->metadata.free_entries = (BLOCK_SIZEHS - POOL_BLOCK_METADATA_SIZE) / obj_size;
     block->metadata.cur_entry = 0;
     block->metadata.object_size = obj_size;
     block->metadata.next = NULL;
@@ -118,7 +119,7 @@ static void *get_new_block(uint32_t obj_size) {
 int synchInitPool(SynchPoolStruct *pool, uint32_t obj_size) {
     SynchPoolBlock *block;
 
-    if (obj_size > BLOCK_SIZE_CC - POOL_BLOCK_METADATA_SIZE) {
+    if (obj_size > BLOCK_SIZEHS - POOL_BLOCK_METADATA_SIZE) {
         fprintf(stderr, "ERROR: synchInitPool: object size unsupported\n");
 
         return SYNCH_POOL_INIT_ERROR;
@@ -129,7 +130,7 @@ int synchInitPool(SynchPoolStruct *pool, uint32_t obj_size) {
     // Get the first block of the pool
     block = get_new_block(obj_size);
 
-    pool->entries_per_block = (BLOCK_SIZE_CC - POOL_BLOCK_METADATA_SIZE) / obj_size;
+    pool->entries_per_block = (BLOCK_SIZEHS - POOL_BLOCK_METADATA_SIZE) / obj_size;
     pool->obj_size = obj_size;
     pool->recycle_list = NULL;
     pool->head_block = block;
@@ -138,24 +139,14 @@ int synchInitPool(SynchPoolStruct *pool, uint32_t obj_size) {
     return SYNCH_POOL_INIT_SUCC;
 }
 
-// #define DEBUG_POOL_STATS
-
 void *synchAllocObj(SynchPoolStruct *pool) {
     SynchBlockObject *ret = NULL;
-
-    #ifdef DEBUG_POOL_STATS
-    static int recrcntr = 0;
-    static int num_avoided_new = 0;
-    #endif
 
     if (pool->recycle_list == NULL) {
         if (pool->cur_block->metadata.free_entries > 0) {
             ret = (void *)&pool->cur_block->heap[(pool->cur_block->metadata.cur_entry) * (pool->obj_size)];
             pool->cur_block->metadata.free_entries -= 1;
             pool->cur_block->metadata.cur_entry += 1;
-    #ifdef DEBUG_POOL_STATS
-            ++num_avoided_new;
-    #endif
         } else {
             if (pool->cur_block->metadata.next != NULL) {
                 pool->cur_block = pool->cur_block->metadata.next;
@@ -163,22 +154,16 @@ void *synchAllocObj(SynchPoolStruct *pool) {
                 SynchPoolBlock *new_block = get_new_block(pool->obj_size);
                 new_block->metadata.back = pool->cur_block;
                 pool->cur_block = new_block;
-                #ifdef DEBUG_POOL_STATS
-                COUTATOMIC("allocating new" <<++recrcntr << ":"<< num_avoided_new <<" objsz:"<<  pool->obj_size <<std::endl);
-                #endif
             }
             ret = synchAllocObj(pool);
         }
     } else {
         ret = pool->recycle_list;
         pool->recycle_list = pool->recycle_list->next;
-        #ifdef DEBUG_POOL_STATS
-        COUTATOMIC("recycling pool" <<std::endl);
-        #endif
     }
 
-#ifdef DEBUG
-    if (ret == NULL) fprintf(stderr, "DEBUG: synchAllocObj returns a NULL object\n");
+#ifdef DEBUG_SH
+    if (ret == NULL) fprintf(stderr, "DEBUG_SH: synchAllocObj returns a NULL object\n");
 #endif
 
     return ret;
@@ -217,8 +202,22 @@ void synchDestroyPool(SynchPoolStruct *pool) {
     while (pool->head_block != NULL) {
         SynchPoolBlock *block = pool->head_block;
         pool->head_block = pool->head_block->metadata.next;
-        synchFreeMemory(block, BLOCK_SIZE_CC);
+        synchFreeMemory(block, BLOCK_SIZEHS);
     }
     pool->head_block = NULL;
     pool->cur_block = NULL;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+#endif
