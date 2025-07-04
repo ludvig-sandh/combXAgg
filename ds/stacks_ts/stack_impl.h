@@ -34,19 +34,43 @@ class node_t {
 template <typename K, typename V, class RecManager>
 class Stack_WRAP {
    private:
+    const int _num_threads;
    public:
     Stack_WRAP(const int num_threads, const int _min_key, const int _max_key,
-               const V _NO_VALUE, unsigned int id) {
-        ts_ = new TS_DS(num_threads + 1, 0);
+               const V _NO_VALUE, unsigned int id) : _num_threads(num_threads) {
+        scal::ThreadLocalAllocator::Get().Init(1*1024*1024/* 10mb */, true);
+      
+        ts_ = new TS_DS(num_threads, 0);
+        pthread_key_create(&scal::ThreadContext::threadcontext_key, NULL);
     }
 
     ~Stack_WRAP() {}
 
-    V peek(const int &tid) { return NULL; }
+    void initThread(const int tid) {
+        VERBOSE COUTATOMIC("begin initThread" << std::endl);
+        // const size_t tlsize = scal::HumanSizeToPages("m\n", 10);
+        scal::ThreadLocalAllocator::Get().Init(1*1024/* 10mb */, true);
 
-    bool push(const int &tid, const V &value) { return true; }
+        scal::ThreadContext::prepare(_num_threads, tid);
+        scal::ThreadContext::assign_context(tid);        
+        
+        VERBOSE COUTATOMIC("end initThread" << std::endl);
+    }
 
-    bool pop(const int &tid) { return true; }
+    V peek(const int &tid) { assert(0 && "need to implement this for read intensive workload tests"); 
+    return NULL; }
+
+    bool push(const int &tid, const V &value) { 
+
+        ts_->push(value, tid);
+        return true; }
+
+    bool pop(const int &tid) { 
+        bool success = false;
+        long unsigned int value;
+        success = ts_->pop(&value, tid);
+        return success;
+    }
 };
 
 #endif

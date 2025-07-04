@@ -18,9 +18,9 @@ namespace scal {
 uint64_t hwrand();
 class ThreadContext {
    public:
-    static ThreadContext &get();
-    static void prepare(uint64_t num_threads);
-    static void assign_context();
+    static ThreadContext &get() ;
+    static void prepare(uint64_t num_threads,const int &tid);
+    static void assign_context(const int &tid);
 
     static constexpr uint64_t get_max_threads() { return kMaxThreads; }
 
@@ -36,7 +36,8 @@ class ThreadContext {
 
     inline void *get_data() { return data_; }
 
-   private:
+//    private:
+    // public:
     static constexpr uint64_t kMaxThreads = 1024;
     static uint64_t global_thread_id_cnt;
     static ThreadContext *contexts[kMaxThreads];
@@ -65,37 +66,42 @@ inline void ThreadContext::new_random_seed() {
 
 ThreadContext &ThreadContext::get() {
     if (pthread_getspecific(threadcontext_key) == NULL) {
-        assign_context();
+        assert(0 && "context was not set");
+        // assign_context(thread_id_);
     }
     ThreadContext *context =
         static_cast<ThreadContext *>(pthread_getspecific(threadcontext_key));
     return *context;
 }
 
-void ThreadContext::assign_context() {
-    uint64_t thread_id = __sync_fetch_and_add(&global_thread_id_cnt, 1);
+void ThreadContext::assign_context(const int &tid) {
+    uint64_t thread_id = tid;//__sync_fetch_and_add(&global_thread_id_cnt, 1);
     if (pthread_setspecific(threadcontext_key, contexts[thread_id])) {
         fprintf(stderr, "%s: pthread_setspecific failed\n", __func__);
         exit(EXIT_FAILURE);
     }
+    // COUTATOMICTID("ThreadContext::assign_context: thread_id = " << thread_id << "threadcontext_key: " << threadcontext_key << " global=" << ThreadContext::threadcontext_key << std::endl);
 }
 
-void ThreadContext::prepare(uint64_t num_threads) {
-    pthread_key_create(&threadcontext_key, NULL);
+void ThreadContext::prepare(uint64_t num_threads, const int &tid) {
+    
+    // pthread_key_create(&threadcontext_key, NULL);
+
     size_t size =
         (sizeof(ThreadContext) / scal::kPageSize + 1) * scal::kPageSize;
     void *mem;
-    for (uint64_t i = 0; i < num_threads; i++) {
-        if (posix_memalign(&mem, scal::kPageSize, size)) {
+    // for (uint64_t i = tid; i < num_threads; i++) {
+    uint64_t i = tid;
+    if (posix_memalign(&mem, scal::kPageSize, size)) {
             fprintf(stderr, "%s: posix_memalign failed\n", __func__);
             exit(EXIT_FAILURE);
-        }
-        ThreadContext *context = new (mem) ThreadContext();
-        context->thread_id_ = i;
-        context->new_random_seed();
-        contexts[i] = context;
-        context->data_ = NULL;
     }
+    ThreadContext *context = new (mem) ThreadContext();
+    context->thread_id_ = i;
+    context->new_random_seed();
+    contexts[i] = context;
+    context->data_ = NULL;
+    // }
 };
 
 }  // namespace scal

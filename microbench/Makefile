@@ -36,7 +36,7 @@ ifeq ($(use_timelines), 1)
 	FLAGS += -DMEASURE_TIMELINE_STATS
 endif
 
-no_optimize=0
+no_optimize=1
 ifeq ($(no_optimize), 1)
 	FLAGS += -O1 -fno-inline-functions -fno-inline -fpermissive
 else

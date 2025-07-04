@@ -33,18 +33,18 @@ class TSStack : public Stack<T> {
 
     char *ds_get_stats(void) { return buffer_->ds_get_stats(); }
 
-    inline bool push(T element) {
-        std::atomic<uint64_t> *item = buffer_->insert_right(element);
+    inline bool push(T element, const int &tid) {
+        std::atomic<uint64_t> *item = buffer_->insert_right(element, tid);
         timestamping_->set_timestamp(item);
         return true;
     }
 
-    inline bool pop(T *element) {
+    inline bool pop(T *element, const int &tid) {
         // Read the invocation time of this operation, needed for the
         // elimination optimization.
         uint64_t invocation_time[2];
         timestamping_->read_time(invocation_time);
-        while (buffer_->try_remove_right(element, invocation_time)) {
+        while (buffer_->try_remove_right(element, invocation_time, tid)) {
             if (*element != (T)NULL) {
                 return true;
             }

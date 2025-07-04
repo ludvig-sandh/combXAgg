@@ -244,8 +244,9 @@ class TSStackBuffer {
     }
     
     // Increases the second debug counter.
-    inline void inc_counter2(uint64_t value) {
-      uint64_t thread_id = scal::ThreadContext::get().thread_id();
+    inline void inc_counter2(uint64_t value, const int &tid) {
+      // uint64_t thread_id = scal::ThreadContext::get().thread_id();
+      uint64_t thread_id = tid;
       (*counter2_[thread_id]) += value;
     }
     
@@ -273,8 +274,9 @@ class TSStackBuffer {
       return strncpy(newbuf, buffer, strlen(buffer));
     }
 
-    inline std::atomic<uint64_t> *insert_right(T element) {
-      uint64_t thread_id = scal::ThreadContext::get().thread_id();
+    inline std::atomic<uint64_t> *insert_right(T element, const int &tid) {
+      // uint64_t thread_id = scal::ThreadContext::get().thread_id();
+      uint64_t thread_id = tid;
 
       // Allocate a new item.
       Item *new_item = scal::tlget_aligned<Item>(scal::kCachePrefetch);
@@ -315,7 +317,7 @@ class TSStackBuffer {
     inline std::atomic<uint64_t> *insert_left(T element) {
       // No explicit insert_left operation is provided, add the element
       // at the right side instead.
-      return insert_right(element);
+      return insert_right(element, 0/* FIXEM: If needed, assuming never used so passing 0 */);
     }
 
     // A short delay in the loop of try_remove to reduce the pressure on the 
@@ -394,9 +396,10 @@ class TSStackBuffer {
     /////////////////////////////////////////////////////////////////
     // try_remove_right
     /////////////////////////////////////////////////////////////////
-    inline bool try_remove_right(T *element, uint64_t *invocation_time) {
+    inline bool try_remove_right(T *element, uint64_t *invocation_time, const int &tid) {
       // Initialize the data needed for the emptiness check.
-      uint64_t thread_id = scal::ThreadContext::get().thread_id();
+      // uint64_t thread_id = scal::ThreadContext::get().thread_id();
+      uint64_t thread_id = tid;
       Item* *emptiness_check_pointers = 
         emptiness_check_pointers_[thread_id];
       // Initialize the result pointer to NULL, which means that no 
@@ -416,7 +419,11 @@ class TSStackBuffer {
       Item* old_top = NULL;
 
       // We start iterating over the thread-local lists at a random index.
+      // ;
+      // COUTATOMICTID("-->try_remove_right "<<scal::ThreadContext::contexts[thread_id]->threadcontext_key<< std::endl);
       uint64_t start = scal::pseudorand() % num_threads_;
+      // COUTATOMICTID("<--try_remove_right" <<std::endl);
+
       SPBuffer* current_buffer;
       SPBuffer* youngest_buffer;
       current_buffer = entry_buffer_.load();
@@ -455,7 +462,7 @@ class TSStackBuffer {
           if (!timestamping_->is_later(invocation_time, item_timestamp)) {
             // We try to set the taken flag and thereby logically remove the item.
             if (remove(item, current_buffer, tmp_top)) {
-      inc_counter2(1);
+      inc_counter2(1, tid);
               // The item has been removed. 
               *element = item->data.load();
               return true;

@@ -88,7 +88,7 @@
      }
  
      void initThread(const int tid) {
-        //  ds->initThread(tid);
+         ds->initThread(tid);
      }
      void deinitThread(const int tid) {
         //  ds->deinitThread(tid);

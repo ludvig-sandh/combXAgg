@@ -10,15 +10,15 @@
 template<typename T>
 class Stack : public Pool<T> {
  public:
-  virtual bool push(T item) = 0;
-  virtual bool pop(T *item) = 0;
+  virtual bool push(T item, const int &tid) = 0;
+  virtual bool pop(T *item, const int &tid) = 0;
 
   inline bool put(T item) {
-    return push(item);
+    return push(item, 0);
   }
 
   inline bool get(T *item) {
-    return pop(item);
+    return pop(item, 0);
   }
 };
 
