@@ -86,13 +86,15 @@ class TSStackBuffer {
 
     // Returns the youngest not-taken item from the given SP buffer.
     inline Item* get_youngest_item(SPBuffer *buffer, Item* *old_top) {
-
+      int i = 0;
       *old_top = buffer->list->load();
       Item* result = (Item*)get_aba_free_pointer(*old_top);
       while (true) {
+        i++;
         if (result->taken.load() == 0) {
           return result;
         }
+        // COUTATOMIC(" i = "<< i);
         Item* next = result->next.load();
         if (next == result) {
           // If the SP buffer is empty, we try to unlink it.
