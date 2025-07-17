@@ -11,7 +11,7 @@
 #ifndef STACK_IMPL_H
 #define STACK_IMPL_H
 
-#include <hstack.h>
+#include <dsmstack.h>
 #include <primitives.h>
 
 #include "record_manager.h"
@@ -30,7 +30,7 @@ class ThreadData {
     PAD;
 
    public:
-    HStackThreadState *th_state;
+    DSMStackThreadState *th_state;
 
     ThreadData() {}
 
@@ -48,41 +48,47 @@ class Stack {
     PAD;
     std::atomic<nodeptr> _top;
     PAD;
-    HStackStruct *object_struct CACHE_ALIGN;
+    DSMStackStruct *object_struct CACHE_ALIGN;
     int64_t d1 CACHE_ALIGN, d2;
     pthread_barrier_t bar;
+
+    int num_threads;
 
    public:
     Stack(const int num_threads, const int _min_key, const int _max_key,
           const V _NO_VALUE, unsigned int id)
-        : _top(NULL) {
-        object_struct =
-            synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(HStackStruct));
-        HStackInit(object_struct, synchGetNCores(), HSYNCH_DEFAULT_NUMA_POLICY);
+        : _top(NULL), num_threads(num_threads) {
         pthread_barrier_init(&bar, NULL, num_threads);
+        // COUTATOMICTID("Init stack " << std::endl);
 
-        COUTATOMIC("Stack object initialized with "
-                   << synchGetNCores() << " threads and "
-                   << HSYNCH_DEFAULT_NUMA_POLICY << " NUMA nodes."
-                   << std::endl);
+        object_struct =
+            synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(DSMStackStruct));
+        DSMSStackInit(object_struct, num_threads);
+        // CCStackThreadState *th_state;
+        // long i, rnum;
+        // th_state = reinterpret_cast<CCStackThreadState *>(
+        //     synchGetAlignedMemory(CACHE_LINE_SIZE,
+        //     sizeof(CCStackThreadState)));
+        // CCStackThreadStateInit(object_struct, th_state, (int)id);
     }
     ~Stack() {}
 
     V peek(const int &tid) { return NULL; }
 
     bool push(const int &tid, const V &value) {
-        VERBOSE COUTATOMICTID("pushing " << std::endl);
-        HStackPush(object_struct, threadData[tid].th_state, tid, tid);
-        VERBOSE COUTATOMICTID("pushed " << std::endl);
+        // COUTATOMICTID("dummy pushing " << value << std::endl);
 
-        return true;
+        DSMStackPush(object_struct, threadData[tid].th_state, tid, tid);
+        bool success = true;
+        return success;
     }
 
     bool pop(const int &tid) {
-        HStackPop(object_struct, threadData[tid].th_state, tid);
+        // COUTATOMICTID("DUMMY popping " << std::endl);
+
+        DSMStackPop(object_struct, threadData[tid].th_state, tid);
 
         bool success = true;
-        // COUTATOMICTID("DUMMY popping " << std::endl);
         return success;
     }
 
@@ -90,18 +96,20 @@ class Stack {
         // if (init[tid]) return;
         // else init[tid] = !init[tid];
         // recmgr->initThread(tid);
-        // COUTATOMICTID("Initializing thread " << tid << std::endl);
+        // COUTATOMICTID("Init thread " << std::endl);
 
-        threadData[tid].th_state = reinterpret_cast<HStackThreadState *>(
-            synchGetAlignedMemory(CACHE_LINE_SIZE, sizeof(HStackThreadState)));
+        threadData[tid].th_state =
+            reinterpret_cast<DSMStackThreadState *>(synchGetAlignedMemory(
+                CACHE_LINE_SIZE, sizeof(DSMStackThreadState)));
 
-        HStackThreadStateInit(object_struct, threadData[tid].th_state,
-                              (int)tid);
+        DSMStackThreadStateInit(object_struct, threadData[tid].th_state,
+                                (int)tid);
     }
 
     void deinitThread(const int tid) {
-        if(tid == 0)
-            HSynchStructInit(&object_struct->object_struct, synchGetNCores(), HSYNCH_DEFAULT_NUMA_POLICY);
+        // COUTATOMICTID("Deinit thread"<< std::endl);
+        if (tid == 0)
+            DSMSynchStructInit(&object_struct->object_struct, num_threads);
         pthread_barrier_wait(&bar);
         // if (!init[tid]) return;
         // else init[tid] = !init[tid];
