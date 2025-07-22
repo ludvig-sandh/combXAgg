@@ -7,10 +7,8 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <config_CC.h>
-#include <system_CC.h>
-#include <stats_CC.h>
 #include <stddef.h>
+
 
 /// @brief The vendor of the processor is unknown.
 #define UNKNOWN_MACHINE             0x0
@@ -236,6 +234,9 @@ inline uint64_t _BitTAS64(volatile uint64_t *A, unsigned char B);
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <config_CC.h>
+#include <system_CC.h>
+#include <stats_CC.h>
 
 #ifdef SYNCH_NUMA_SUPPORT
 #    include <numa.h>
@@ -245,7 +246,7 @@ inline uint64_t _BitTAS64(volatile uint64_t *A, unsigned char B);
 
 static __thread uint32_t __machine_model = UNINITIALIZED_MACHINE_MODEL;
 
-#ifdef DEBUG
+#ifdef DEBUG_CC
 extern __thread int64_t __failed_cas;
 extern __thread int64_t __executed_cas;
 extern __thread int64_t __executed_swap;
@@ -364,7 +365,7 @@ inline bool _CAS128(uint64_t *A, uint64_t B0, uint64_t B1, uint64_t C0, uint64_t
     res = __atomic_compare_exchange_16(A, &old_value, new_value, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
 #endif
 
-#ifdef DEBUG
+#ifdef DEBUG_CC
     __executed_cas++;
     __failed_cas += 1 - res;
 #endif
@@ -438,8 +439,8 @@ inline uint64_t synchGetMachineModel(void) {
                  "movl %%ecx, %2\n"
                  : "=m"(cpu_model[0]), "=m"(cpu_model[4]), "=m"(cpu_model[8])
                  :: "%eax", "%ebx", "%edx", "%ecx", "memory");
-#ifdef DEBUG
-    fprintf(stderr, "DEBUG: Machine model: %s\n", cpu_model);
+#ifdef DEBUG_CC
+    fprintf(stderr, "DEBUG_CC: Machine model: %s\n", cpu_model);
 #endif
 
     if (strcmp(cpu_model, "AuthenticAMD") == 0)
@@ -460,7 +461,7 @@ inline uint64_t synchGetMachineModel(void) {
 }
 
 inline bool _CASPTR(void *A, void *B, void *C) {
-#ifdef DEBUG
+#ifdef DEBUG_CC
     int res;
 
     res = __CASPTR(A, B, C);
@@ -474,7 +475,7 @@ inline bool _CASPTR(void *A, void *B, void *C) {
 }
 
 inline bool _CAS64(uint64_t *A, uint64_t B, uint64_t C) {
-#ifdef DEBUG
+#ifdef DEBUG_CC
     int res;
 
     res = __CAS64(A, B, C);
@@ -488,7 +489,7 @@ inline bool _CAS64(uint64_t *A, uint64_t B, uint64_t C) {
 }
 
 inline bool _CAS32(uint32_t *A, uint32_t B, uint32_t C) {
-#ifdef DEBUG
+#ifdef DEBUG_CC
     int res;
 
     res = __CAS32(A, B, C);
@@ -512,12 +513,12 @@ inline void *_SWAP(void *A, void *B) {
         new_val = B;
         if (((void *)*((volatile long *)A)) == old_val && synchCASPTR(A, old_val, new_val) == true) break;
     }
-#    ifdef DEBUG
+#    ifdef DEBUG_CC
     __executed_swap++;
 #    endif
     return old_val;
 #else
-#    ifdef DEBUG
+#    ifdef DEBUG_CC
     __executed_swap++;
     return (void *)__SWAP(A, B);
 #    else
@@ -538,12 +539,12 @@ inline int32_t _FAA32(volatile int32_t *A, int32_t B) {
         new_val = old_val + B;
         if (*A == old_val && synchCAS32(A, old_val, new_val) == true) break;
     }
-#    ifdef DEBUG
+#    ifdef DEBUG_CC
     __executed_faa++;
 #    endif
     return old_val;
 #else
-#    ifdef DEBUG
+#    ifdef DEBUG_CC
     __executed_faa++;
     return __FAA32(A, B);
 #    else
@@ -564,12 +565,12 @@ inline int64_t _FAA64(volatile int64_t *A, int64_t B) {
         new_val = old_val + B;
         if (*A == old_val && synchCAS64(A, old_val, new_val) == true) break;
     }
-#    ifdef DEBUG
+#    ifdef DEBUG_CC
     __executed_faa++;
 #    endif
     return old_val;
 #else
-#    ifdef DEBUG
+#    ifdef DEBUG_CC
     __executed_faa++;
     return __FAA64(A, B);
 #    else

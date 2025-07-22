@@ -323,8 +323,8 @@ int synchThreadPin(int32_t cpu_id) {
 
     __preferred_numa_node = synchPreferredNumaNodeOfThread(cpu_id);
     CPU_SET(__preferred_core, &mask);
-#if defined(DEBUG) && defined(SYNCH_NUMA_SUPPORT)
-    fprintf(stderr, "DEBUG: posix_thread: %d -- numa_node: %d -- core: %d\n", cpu_id, __preferred_numa_node, __preferred_core);
+#if defined(DEBUG_CC) && defined(SYNCH_NUMA_SUPPORT)
+    fprintf(stderr, "DEBUG_CC: posix_thread: %d -- numa_node: %d -- core: %d\n", cpu_id, __preferred_numa_node, __preferred_core);
 #endif
     ret = sched_setaffinity(0, len, &mask);
     if (ret == -1)
@@ -344,12 +344,12 @@ inline static void *uthreadWrapper(void *arg) {
     synchInitFibers(__uthreads);
     for (i = 0; i < __uthreads - 1; i++) {
         synchSpawnFiber(__func, pid + i + 1);
-#if defined(DEBUG)
-        fprintf(stderr, "DEBUG: fiber: %ld\n", pid + i + 1);
+#if defined(DEBUG_CC)
+        fprintf(stderr, "DEBUG_CC: fiber: %ld\n", pid + i + 1);
 #endif
     }
-#if defined(DEBUG)
-    fprintf(stderr, "DEBUG: fiber: %ld\n", pid);
+#if defined(DEBUG_CC)
+    fprintf(stderr, "DEBUG_CC: fiber: %ld\n", pid);
 #endif
     __func((void *)pid);
 
