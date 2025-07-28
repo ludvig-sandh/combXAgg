@@ -53,10 +53,11 @@
       __AND gstats_output_item(PRINT_RAW, MIN, TOTAL) \
       __AND gstats_output_item(PRINT_RAW, MAX, TOTAL) \
     }) \
-    gstats_handle_stat(LONG_LONG, comb_batchsize, 1, { \
+    gstats_handle_stat(LONG_LONG, comb_batchsize, 100000, { \
         gstats_output_item(PRINT_RAW, AVERAGE, TOTAL) \
       __AND gstats_output_item(PRINT_RAW, MIN, TOTAL) \
       __AND gstats_output_item(PRINT_RAW, MAX, TOTAL) \
+      __AND gstats_output_item(PRINT_RAW, AVERAGE, BY_THREAD) \
     }) \
     gstats_handle_stat(LONG_LONG, comb_numbatchpush, 1, { \
         gstats_output_item(PRINT_RAW, AVERAGE, TOTAL) \

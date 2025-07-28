@@ -238,13 +238,15 @@ nodeptr myNode = new node_t<K, V>(0, value);
                 int numpush = myBatch->finalPushCount.load(std::memory_order_relaxed);
                 int numpop = myBatch->finalPopCount.load(std::memory_order_relaxed);
 
-                int num_noneliminated = (numpush-numpop) < 0 ? (-1)*(numpush-numpop) : (numpush-numpop);
+                // int num_noneliminated = (numpush-numpop) < 0 ? (-1)*(numpush-numpop) : (numpush-numpop);
 
-                int num_eliminated = (numpush > numpop) ? numpop : numpush;
+                // int num_eliminated = (numpush > numpop) ? numpop : numpush;
 
-                int total_size = num_eliminated + num_noneliminated;
+                int total_size = numpush + numpop;
 
-                GSTATS_ADD(tid, comb_batchsize, total_size);
+                // COUTATOMICTID("dummy batch size = " << total_size <<std::endl);
+                GSTATS_APPEND(tid, comb_batchsize, total_size);
+                GSTATS_ADD(tid, comb_numbatchpush, 1);
                 // GSTATS(tid, comb_numbatchpop, numpop);
 
             } else {
