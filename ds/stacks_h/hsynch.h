@@ -131,11 +131,12 @@ RetVal HSynchApplyOp(HSynchStruct *l, HSynchThreadState *st_thread, RetVal (*sfu
 #endif
 
 #define HSYNCH_HELP_FACTOR            10
-#define HSYNCH_DEFAULT_NUMA_NODE_SIZE 8
+#define HSYNCH_DEFAULT_NUMA_NODE_SIZE 12
 
 static __thread int node_of_thread = 0;
 
 RetVal HSynchApplyOp(HSynchStruct *l, HSynchThreadState *st_thread, RetVal (*sfunc)(void *, ArgVal, int), void *state, ArgVal arg, int pid) {
+    // COUTATOMIC("EXECUTION: HSynchApplyOp -- thread_id: " << pid << "\n");
     volatile HSynchNode *p;
     volatile HSynchNode *cur;
     register HSynchNode *next_node, *tmp_next;
@@ -153,9 +154,18 @@ RetVal HSynchApplyOp(HSynchStruct *l, HSynchThreadState *st_thread, RetVal (*sfu
     cur->next = (HSynchNode *)next_node;
 
     st_thread->next_node = (HSynchNode *)cur;
-
+    bool flag = false;
     while (cur->locked) // spinning
+    {  
+        if (flag == false) {
+            // The first time we enter this loop, we need to set the flag to true
+            // so that we can use the next_node pointer for the next iteration.
+            flag = true;
+            // COUTATOMIC("SPINNING: thread_id: " << pid << "\n");
+        }
+
         synchResched();
+    }
 
     p = cur;            // I am not been helped
     if (cur->completed) // I have been helped
@@ -165,6 +175,7 @@ RetVal HSynchApplyOp(HSynchStruct *l, HSynchThreadState *st_thread, RetVal (*sfu
     l->rounds++;
 #endif
     while (counter < help_bound && p->next != NULL) {
+        // COUTATOMIC("DEBUG_STACKH: thread_id: " << pid << " -- pid: " << p->pid << " -- counter: " << counter  << " Help bound: " << help_bound << "\n");
         synchReadPrefetch(p->next);
         counter++;
 #ifdef DEBUG_STACKH
@@ -186,6 +197,19 @@ RetVal HSynchApplyOp(HSynchStruct *l, HSynchThreadState *st_thread, RetVal (*sfu
             synchFullFence();
     }
     p->locked = false; // Unlock the next one
+    // COUTATOMIC("FINISHED: thread_id: " << pid << " -- unlocking: " << p->pid << "\n");
+    bool cycle_detected = false;
+    while(p->next != NULL) {
+        // COUTATOMIC("PRINTING THE QUEUE: " << pid << " -- pid: " << p->pid << "\n");
+        synchReadPrefetch(p->next);
+        volatile HSynchNode* prev = p;
+        p = p->next;
+        if(prev == p->next){
+            if(cycle_detected == false)
+            // COUTATOMIC("CYCLE DETECTED: " << " -- pid: " << p->pid << "\n");
+            cycle_detected = true;
+        }
+    }
     CLHUnlock(l->central_lock, pid);
 
     return cur->arg_ret;

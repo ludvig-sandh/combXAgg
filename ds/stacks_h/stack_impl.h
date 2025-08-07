@@ -51,19 +51,19 @@ class Stack {
     HStackStruct *object_struct CACHE_ALIGN;
     int64_t d1 CACHE_ALIGN, d2;
     pthread_barrier_t bar;
-
+    const int num_thread;
    public:
     Stack(const int num_threads, const int _min_key, const int _max_key,
           const V _NO_VALUE, unsigned int id)
-        : _top(NULL) {
+        : _top(NULL), num_thread(num_threads) {
         object_struct =
             synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(HStackStruct));
-        HStackInit(object_struct, synchGetNCores(), HSYNCH_DEFAULT_NUMA_POLICY);
+        HStackInit(object_struct, num_threads, HSYNCH_DEFAULT_NUMA_POLICY);
         pthread_barrier_init(&bar, NULL, num_threads);
 
         COUTATOMIC("Stack object initialized with "
-                   << synchGetNCores() << " threads and "
-                   << HSYNCH_DEFAULT_NUMA_POLICY << " NUMA nodes."
+                   << num_thread << " threads and "
+                   << HSYNCH_DEFAULT_NUMA_POLICY << " NUMA policy."
                    << std::endl);
     }
     ~Stack() {}
@@ -101,7 +101,7 @@ class Stack {
 
     void deinitThread(const int tid) {
         if(tid == 0)
-            HSynchStructInit(&object_struct->object_struct, synchGetNCores(), HSYNCH_DEFAULT_NUMA_POLICY);
+            HSynchStructInit(&object_struct->object_struct, num_thread, HSYNCH_DEFAULT_NUMA_POLICY);
         pthread_barrier_wait(&bar);
         // if (!init[tid]) return;
         // else init[tid] = !init[tid];

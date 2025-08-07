@@ -80,6 +80,7 @@ static const int POP_OP = INT_MIN;
 static __thread SynchPoolStruct pool_node CACHE_ALIGN;
 
 void HStackInit(HStackStruct *stack_object_struct, uint32_t nthreads, uint32_t numa_nodes) {
+    COUTATOMIC("HStackInit: Initializing H-Stack with " << nthreads << " threads and " << numa_nodes << " NUMA nodes." << std::endl);
     HSynchStructInit(&stack_object_struct->object_struct, nthreads, numa_nodes);
     stack_object_struct->top = NULL;
 }

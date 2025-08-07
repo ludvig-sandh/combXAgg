@@ -131,7 +131,7 @@ RetVal HSynchApplyOp(HSynchStruct *l, HSynchThreadState *st_thread, RetVal (*sfu
 #endif
 
 #define HSYNCH_HELP_FACTOR            10
-#define HSYNCH_DEFAULT_NUMA_NODE_SIZE 8
+#define HSYNCH_DEFAULT_NUMA_NODE_SIZE 12
 
 static __thread int node_of_thread = 0;
 
@@ -220,7 +220,7 @@ void HSynchThreadStateInit(HSynchStruct *l, HSynchThreadState *st_thread, int pi
 #else
     node_of_thread = pid / l->numa_node_size;
 #endif
-
+    COUTATOMIC("Node_of_thread: " << node_of_thread << std::endl);
     if (l->nodes[node_of_thread] == NULL) {
         HSynchNode *ptr = synchGetAlignedMemory(CACHE_LINE_SIZE, (l->numa_node_size + 2) * sizeof(HSynchNode));
 
@@ -232,6 +232,11 @@ void HSynchThreadStateInit(HSynchStruct *l, HSynchThreadState *st_thread, int pi
         if (synchCASPTR(&l->nodes[node_of_thread], NULL, ptr) == false) 
             synchFreeMemory(ptr, (l->numa_node_size + 2) * sizeof(HSynchNode));
     }
+
+    COUTATOMIC("l->numa_nodes: " << l->numa_nodes << std::endl);
+    COUTATOMIC("l->numa_node_size: " << l->numa_node_size << std::endl);
+    COUTATOMIC("l->nthreads: " << l->nthreads << std::endl);
+    COUTATOMIC("l->numa_policy: " << l->numa_policy << std::endl);
     last_node = l->nodes[node_of_thread] + l->numa_node_size + 1;
     synchCASPTR(&l->Tail[node_of_thread].ptr, NULL, last_node);
     node_index = synchFAA32(&l->node_indexes[node_of_thread], 1);
@@ -244,10 +249,12 @@ void HSynchThreadStateInit(HSynchStruct *l, HSynchThreadState *st_thread, int pi
 
 void HSynchStructInit(HSynchStruct *l, uint32_t nthreads, uint32_t numa_regions) {
     int i;
+    COUTATOMIC("NUMA regions: " << numa_regions << std::endl);
 
     if (numa_regions > nthreads)
         numa_regions = nthreads;
     l->nthreads = nthreads;
+    COUTATOMIC("NUMA regions: " << numa_regions << std::endl);
     if (numa_regions == HSYNCH_DEFAULT_NUMA_POLICY) {
         // Whenever numa_regions is equal to HSYNCH_DEFAULT_NUMA_POLICY, the user uses
         // the default number of NUMA nodes, which is equal to the number of NUMA nodes
@@ -264,12 +271,13 @@ void HSynchStructInit(HSynchStruct *l, uint32_t nthreads, uint32_t numa_regions)
         // better performance. The user usually overrides HSYNCH_DEFAULT_NUMA_POLICY
         // by setting the '-n' argument in the executable of the benchmarks.
         l->numa_policy = true;
-
+        COUTATOMIC("I am here" << std::endl);
 #ifdef SYNCH_NUMA_SUPPORT
         uint32_t ncpus = synchGetNCores();
 
         l->numa_nodes = numa_num_task_nodes();
         l->numa_node_size = nthreads / l->numa_nodes + (nthreads % l->numa_nodes);
+        COUTATOMIC("ncpu: " << ncpus << std::endl);
 
         if (l->numa_node_size < ncpus / l->numa_nodes)
             l->numa_node_size = ncpus / l->numa_nodes;
@@ -287,7 +295,10 @@ void HSynchStructInit(HSynchStruct *l, uint32_t nthreads, uint32_t numa_regions)
         if (nthreads % l->numa_nodes != 0) 
             l->numa_node_size *= 2;
     }
-
+    COUTATOMIC("l->numa_nodes: " << l->numa_nodes << std::endl);
+    COUTATOMIC("l->numa_node_size: " << l->numa_node_size << std::endl);
+    COUTATOMIC("l->nthreads: " << l->nthreads << std::endl);
+    COUTATOMIC("l->numa_policy: " << l->numa_policy << std::endl);
     l->central_lock = CLHLockInit(nthreads);
     l->nodes = synchGetAlignedMemory(CACHE_LINE_SIZE, l->numa_nodes * sizeof(HSynchNode *));
     l->Tail = synchGetAlignedMemory(CACHE_LINE_SIZE, l->numa_nodes * sizeof(HSynchNodePtr));

@@ -63,6 +63,9 @@ class Stack_WRAP {
     }
 
     V peek(const int &tid) {
+
+        
+        ts_->buffer_->get_youngest_item(ts_->buffer_->entry_buffer_.load(), NULL);
         assert(0 && "need to implement this for read intensive workload tests");
         return NULL;
     }
