@@ -56,7 +56,7 @@ class Stack {
     Stack(const int num_threads, const int _min_key, const int _max_key,
           const V _NO_VALUE, unsigned int id) {
 
-        scal::ThreadLocalAllocator::Get().Init(1*1024*1024/* 10mb */, true);
+        scal::ThreadLocalAllocator::Get().Init(1024/* 10mb */, true);
 
 
             // uint64 FLAGS_collision = 0; //, "size of the collision array");
@@ -78,7 +78,7 @@ class Stack {
     void initThread(const int tid) {
         VERBOSE COUTATOMIC("begin initThread" << std::endl);
         // const size_t tlsize = scal::HumanSizeToPages("m\n", 10);
-        scal::ThreadLocalAllocator::Get().Init(1*1024*1024/* 10mb */, true);
+        scal::ThreadLocalAllocator::Get().Init(1024/* 10mb */, true);
         
         VERBOSE COUTATOMIC("end initThread" << std::endl);
     }

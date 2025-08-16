@@ -553,6 +553,150 @@ class TSStackBuffer {
       // removed at the right side instead.
       return try_remove_right(element, invocation_time);
     }
+
+    inline bool get_top( uint64_t *invocation_time,
+                                 const int &tid) {
+        // Initialize the data needed for the emptiness check.
+        // uint64_t thread_id = scal::ThreadContext::get().thread_id();
+        uint64_t thread_id = tid;
+        Item **emptiness_check_pointers = emptiness_check_pointers_[thread_id];
+        // Initialize the result pointer to NULL, which means that no
+        // element has been found yet.
+        Item *result = NULL;
+        // Memory on the stack frame where timestamps of items can be stored
+        // temporarily.
+        uint64_t tmp_timestamp[2][2];
+        // Index in the tmp_timestamp array which is not used at the moment.
+        uint64_t tmp_index = 1;
+        timestamping_->init_sentinel(tmp_timestamp[0]);
+        // timestamp stores a pointer to the timestamp of the item with the
+        // latest timestamp.
+        uint64_t *timestamp = tmp_timestamp[0];
+        // Stores the value of the remove pointer of a thead-local buffer
+        // before the buffer is actually accessed.
+        Item *old_top = NULL;
+
+        // We start iterating over the thread-local lists at a random index.
+        // ;
+        // COUTATOMICTID("-->try_remove_right
+        // "<<scal::ThreadContext::contexts[thread_id]->threadcontext_key<<
+        // std::endl);
+        uint64_t start = scal::pseudorand() % num_threads_;
+        // COUTATOMICTID("<--try_remove_right" <<std::endl);
+
+        SPBuffer *current_buffer;
+        SPBuffer *youngest_buffer;
+        current_buffer = entry_buffer_.load();
+        uint64_t entry_counter = 0;
+        // Iterate to a random start buffer.
+        for (uint64_t i = 0; i < start; i++) {
+            current_buffer = current_buffer->next.load();
+        }
+        SPBuffer *start_buffer = current_buffer;
+        // We iterate over all thead-local buffers
+        while (true) {
+            if (current_buffer->index == -1) {
+                entry_counter++;
+            }
+            // The start buffer may have been removed during the iteration, thus
+            // we terminate the loop also when the entry buffer is visited
+            // twice. The entry buffer cannot be removed.
+            if (entry_counter >= 2) {
+                break;
+            }
+            current_buffer = current_buffer->next.load();
+            Item *tmp_top;
+            // We get the youngest element from that thread-local buffer.
+            Item *item = get_youngest_item(current_buffer, &tmp_top);
+            // If we found an element, we compare it to the youngest element
+            // we have found until now.
+            if (item != NULL) {
+                uint64_t *item_timestamp;
+                timestamping_->load_timestamp(tmp_timestamp[tmp_index],
+                                              item->timestamp);
+                item_timestamp = tmp_timestamp[tmp_index];
+
+                delay();
+                // Check if we can remove the element immediately.
+                if (!timestamping_->is_later(invocation_time, item_timestamp)) {
+                    // We try to set the taken flag and thereby logically remove
+                    // the item.
+                    if (item->taken.load() == 0) {
+                        return true;
+                    } else {
+                        // Elimination failed, we have to load a new element of
+                        // that buffer.
+                        item = get_youngest_item(current_buffer, &tmp_top);
+                        if (item != NULL) {
+                            timestamping_->load_timestamp(
+                                tmp_timestamp[tmp_index], item->timestamp);
+                            item_timestamp = tmp_timestamp[tmp_index];
+                        }
+                    }
+                }
+                if (item != NULL &&
+                    timestamping_->is_later(item_timestamp, timestamp)) {
+                    // We found a new youngest element, so we remember it.
+                    result = item;
+                    youngest_buffer = current_buffer;
+                    timestamp = item_timestamp;
+                    tmp_index ^= 1;
+                    old_top = tmp_top;
+                }
+            } else {
+                // Emptiness check: no element for, record the top poiner.
+                if (current_buffer->index != -1) {
+                    emptiness_check_pointers[current_buffer->index] = tmp_top;
+                }
+            }
+            // We have seen all SP buffers, we can terminate the loop.
+            if (current_buffer == start_buffer) {
+                break;
+            }
+        }
+
+        bool empty = false;
+        if (result != NULL) {
+            // We found a youngest element which is not younger than the
+            // invocation time. We try to remove it.
+            if (result->taken.load() == 0) {
+                return true;
+            }
+
+        } else {
+            // Emptiness check.
+            empty = true;
+            start_buffer = current_buffer;
+            entry_counter = 0;
+            // We iterate over all thead-local buffers
+            while (true) {
+                current_buffer = current_buffer->next.load();
+
+                if (current_buffer->index == -1) {
+                    entry_counter++;
+                    // The start buffer may have been removed during the
+                    // iteration, thus we terminate the loop also when the entry
+                    // buffer is visited twice. The entry buffer cannot be
+                    // removed.
+                    if (entry_counter >= 2) {
+                        break;
+                    }
+                    continue;
+                }
+
+                if (current_buffer->list->load() !=
+                    emptiness_check_pointers[current_buffer->index]) {
+                    empty = false;
+                    break;
+                }
+
+                if (current_buffer == start_buffer) {
+                    break;
+                }
+            }
+        }
+        return !empty;
+    }
 };
 
 #endif  // SCAL_DATASTRUCTURES_TS_STACK_BUFFER_H_

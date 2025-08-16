@@ -52,6 +52,11 @@ class TSStack : public Stack<T> {
         // The stack was empty, return false.
         return false;
     }
+    inline bool top(const int &tid) {
+        uint64_t invocation_time[2];
+        timestamping_->read_time(invocation_time);
+        return buffer_->get_top(invocation_time, tid);
+    }
 };
 
 #endif  // SCAL_DATASTRUCTURES_TS_DATASTRUCTURE_H_

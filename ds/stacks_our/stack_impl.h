@@ -10,12 +10,12 @@
  */
 #ifndef STACK_IMPL_H
 #define STACK_IMPL_H
-
+#include <cmath>
 // FIXME: creating unnecessary aggregators/
 // FIXME: memory leaks
 
-#define MAX_AGGREGATOR_THREADS 48
-#define NUMBER_AGGREGATORS 8 //cant have more than 8 agg for 192 threads with 48 max threads per agg
+int MAX_AGGREGATOR_THREADS;
+#define NUMBER_AGGREGATORS 1
 
 #define CHOOSE_AGGREGATOR(tId) (aggregator[(tId) / MAX_AGGREGATOR_THREADS])
 
@@ -53,7 +53,7 @@ class alignas(BYTES_IN_CACHE_LINE) node_t {
 template <typename K, typename V>
 struct alignas(BYTES_IN_CACHE_LINE) Batch {
     // PAD
-    std::atomic<nodeptr> eliminationArray[MAX_AGGREGATOR_THREADS];
+    std::atomic<nodeptr> *eliminationArray;
     // PAD
     #ifdef USE_AF
         SIMPLE_AGG_FUNNEL::AggFunnelCounter<int> pushCounter;
@@ -114,7 +114,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         newBatch->isBatchApplied.store(false, std::memory_order_relaxed);
         newBatch->subStackBot.store(NULL, std::memory_order_relaxed);
         newBatch->subStackTop.store(NULL, std::memory_order_relaxed);
-
+        newBatch->eliminationArray = malloc(sizeof(std::atomic<nodeptr>)*MAX_AGGREGATOR_THREADS);
         // newBatch->next = NULL;
         for (size_t i = 0; i < MAX_AGGREGATOR_THREADS; i++) {
             // newBatch->eliminationArray[i].store(NULL,
@@ -167,7 +167,9 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         nodeptr subStackBot)  // Aggregation of multiple push operations
                               // to main(same as aggregation of F&A).
     {
+        GSTATS_ADD(0, comb_numshared, 1);
         while (true) {
+            GSTATS_ADD(0, comb_numretrytop, 1);
             struct node_t<K, V> *top = main_top;  // load top
             subStackBot->next = top;
             if (main_top.compare_exchange_strong(top, subStackTop)) return;
@@ -202,6 +204,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
     Stack(const int num_threads, const int _min_key, const int _max_key,
           const V _NO_VALUE, unsigned int id)
         : main_top(NULL) {
+            MAX_AGGREGATOR_THREADS = ceil(float(num_threads)/NUMBER_AGGREGATORS);
         for (int i = 0; i < NUMBER_AGGREGATORS; i++) {
             aggregator[i].batch = CreateNewBatch();
         }
@@ -246,7 +249,7 @@ nodeptr myNode = new node_t<K, V>(0, value);
 
                 // COUTATOMICTID("dummy batch size = " << total_size <<std::endl);
                 GSTATS_APPEND(tid, comb_batchsize, total_size);
-                GSTATS_ADD(tid, comb_numbatchpush, 1);
+                GSTATS_ADD(tid, comb_numbatch, 1);
                 // GSTATS(tid, comb_numbatchpop, numpop);
 
             } else {
