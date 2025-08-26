@@ -15,20 +15,19 @@
 // FIXME: memory leaks
 
 int MAX_AGGREGATOR_THREADS;
-#define NUMBER_AGGREGATORS 4
+#define NUMBER_AGGREGATORS 2
 
 #define CHOOSE_AGGREGATOR(tId) (aggregator[(tId) / MAX_AGGREGATOR_THREADS])
 
 #include <immintrin.h>
+
 #include "./util/aggregatingFunnelCounter.hpp"
+#include "define_global_statistics.h"
 #include "pool.h"
 #include "record_manager.h"
-
-#include "define_global_statistics.h"
 static __thread SynchPoolStruct pool_node CACHE_ALIGN;
 static __thread SynchPoolStruct pool_batch CACHE_ALIGN;
 static __thread bool init = false;
-
 // #define USE_POOLS
 // #define USE_BACKOFF // doesn't help us.
 
@@ -66,8 +65,8 @@ struct alignas(BYTES_IN_CACHE_LINE) Batch {
     std::atomic_flag hasLeader;
     std::atomic<nodeptr> subStackTop;
     // PAD
-     struct Batch *bnext;
-     struct Batch *bprev;
+    struct Batch *bnext;
+    struct Batch *bprev;
     // std::atomic<struct Batch<K, V>*> bprev; //FIXME: needn't be atomic
     // std::atomic<struct Batch<K, V>*> bnext;
 };
@@ -86,6 +85,7 @@ struct alignas(BYTES_IN_CACHE_LINE) Aggregator {
 template <typename K, typename V, class RecManager>
 class alignas(BYTES_IN_CACHE_LINE) Stack {
    private:
+    static inline thread_local std::atomic<Batch<K, V> *> newBatchPtr{nullptr};
     // PAD
     std::atomic<nodeptr> main_top;
     // PAD
@@ -98,8 +98,8 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         if (init)
             newBatch = synchAllocObj(&pool_batch);
         else
-#endif            // assert (0 && "failed");
-        newBatch = new Batch<K, V>;
+#endif  // assert (0 && "failed");
+            newBatch = new Batch<K, V>;
         // memset(newBatch, 0, sizeof(Batch<K, V>));
 
         // newBatch->popCounter.store(0, std::memory_order_relaxed);
@@ -110,7 +110,8 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         newBatch->hasLeader.clear(std::memory_order_relaxed);
         newBatch->isBatchApplied.store(false, std::memory_order_relaxed);
         newBatch->subStackTop.store(NULL, std::memory_order_relaxed);
-        newBatch->eliminationArray = malloc(sizeof(std::atomic<nodeptr>)*MAX_AGGREGATOR_THREADS);
+        newBatch->eliminationArray =
+            malloc(sizeof(std::atomic<nodeptr>) * MAX_AGGREGATOR_THREADS);
         // newBatch->next = NULL;
         for (size_t i = 0; i < MAX_AGGREGATOR_THREADS; i++) {
             // newBatch->eliminationArray[i].store(NULL,
@@ -123,37 +124,57 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
 
     void FreezeBatch(struct Aggregator<K, V> *aggregator,
                      std::atomic<struct Batch<K, V> *> batch) {
-        
-        std::atomic<struct Batch<K, V> *> newBatch;
- 
-        newBatch.store(CreateNewBatch(), std::memory_order_relaxed);
-       
-        newBatch.load()->bprev = batch.load();
-        batch.load()->bnext = newBatch;
-        
-        int mypushCntr = aggregator->pushCounter;
-        int mypopCntr = aggregator->popCounter;
+        // std::atomic<struct Batch<K, V> *> newBatch;
+        newBatchPtr.load()->bprev = batch.load();
+        batch.load()->bnext = newBatchPtr;
+        volatile int dummy = 0;
+        for (int i = 0; i < 525; i++) {
+            dummy++;
+        }
+        long long mypushCntr = aggregator->pushCounter;
+        long long mypopCntr = aggregator->popCounter;
 
         batch.load()->finalPushCount.store(mypushCntr);
         batch.load()->finalPopCount.store(mypopCntr);
 
-        newBatch.load()->startingPushCntr = mypushCntr;
-        newBatch.load()->startingPopCntr = mypopCntr; 
-
+        newBatchPtr.load()->startingPushCntr = mypushCntr;
+        newBatchPtr.load()->startingPopCntr = mypopCntr;
 
         // Unlocks the waiting threads
-        aggregator->batch.store(newBatch);
-    }
+        aggregator->batch.store(newBatchPtr);
 
-    
+        // long long numpush =
+        //     batch.load()->finalPushCount.load(std::memory_order_relaxed) -
+        //     batch.load()->startingPushCntr;
+        // long long numpop =
+        //     batch.load()->finalPopCount.load(std::memory_order_relaxed) -
+        //     batch.load()->startingPopCntr;
+
+        // long long num_noneliminated = (numpush - numpop) < 0
+        //                                   ? (-1) * (numpush - numpop)
+        //                                   : (numpush - numpop);
+        // long long num_eliminated = (numpush > numpop) ? 2 * numpop : 2 * numpush;
+
+        // long long total_size = numpush + numpop;
+
+        // // COUTATOMICTID("dummy batch size = " << total_size
+        // // <<std::endl);
+        // // GSTATS_ADD(tid, comb_batchsize, total_size);
+        // GSTATS_ADD(tid, number_batches, 1);
+        // GSTATS_ADD(tid, number_non_eliminated, num_noneliminated);
+        // GSTATS_ADD(tid, number_eliminated, num_eliminated);
+
+        newBatchPtr.store(CreateNewBatch(), std::memory_order_relaxed);
+    }
     void CreatePushSubstackAndPush(struct Batch<K, V> *batch, int leaderIndex) {
-        struct node_t<K, V> *tempTop = batch->eliminationArray[leaderIndex].load();
+        struct node_t<K, V> *tempTop =
+            batch->eliminationArray[leaderIndex].load();
         struct node_t<K, V> *tempBot = tempTop;
         int i = 1;
-        while (i < ((batch->finalPushCount - batch->startingPushCntr) - (batch->finalPopCount - batch->startingPopCntr)) ) 
-        {
-            while (!batch->eliminationArray[leaderIndex + i].load(
-                ))  // Wait for Push to write value.
+        while (i < ((batch->finalPushCount - batch->startingPushCntr) -
+                    (batch->finalPopCount - batch->startingPopCntr))) {
+            while (!batch->eliminationArray[leaderIndex + i]
+                        .load())  // Wait for Push to write value.
             {
             }
             nodeptr tempNode = batch->eliminationArray[leaderIndex + i].load(
@@ -162,10 +183,12 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
             tempTop = tempNode;
             i++;
         }
+        // GSTATS_ADD(0, shared_ops, 1);
         while (true) {
             struct node_t<K, V> *top = main_top;  // load top
             tempBot->next = top;
             if (main_top.compare_exchange_strong(top, tempTop)) return;
+            // GSTATS_ADD(0, retry_op, 1);
         }
     }
 
@@ -179,94 +202,98 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
             aggregator[i].batch.load()->finalPushCount = -1;
             aggregator[i].batch.load()->finalPopCount = -1;
 
-            struct Batch<K, V>* batch1 = CreateNewBatch();
+            struct Batch<K, V> *batch1 = CreateNewBatch();
             batch1->bprev = aggregator[i].batch;
-            aggregator[i].batch.load()->bnext =batch1;
+            aggregator[i].batch.load()->bnext = batch1;
 
             aggregator[i].batch = batch1;
-            aggregator[i].pushCounter.store(0,std::memory_order_relaxed);
+            aggregator[i].pushCounter.store(0, std::memory_order_relaxed);
             aggregator[i].popCounter.store(0, std::memory_order_relaxed);
         }
     }
-    ~Stack() {
-        COUTATOMIC("combxagg node size=" << sizeof(node_t<K, V>));
-    }
+    ~Stack() { COUTATOMIC("combxagg node size=" << sizeof(node_t<K, V>)); }
 
-    V peek(const int &tid) {
-        return main_top ? main_top.load() : V();
-    }
+    V peek(const int &tid) { return main_top ? main_top.load() : V(); }
 
     bool push(const int &tid, const V &value) {
         Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
         nodeptr myNode = new node_t<K, V>(0, value);
-        
+
         int pushIndex = myAggregator->pushCounter.fetch_add(1, tid);
         struct Batch<K, V> *mayBeMyBatch = myAggregator->batch;
         struct Batch<K, V> *myBatch = nullptr;
         int relativepushIndex = -1;
 
-        while(1)
-        {
+        while (1) {
             struct Batch<K, V> *prevBatch = mayBeMyBatch->bprev;
 
-            if (pushIndex >= prevBatch->finalPushCount) // NOTEME: dummynode hass finalcount = -1
+            if (pushIndex >=
+                prevBatch
+                    ->finalPushCount)  // NOTEME: dummynode hass finalcount = -1
             {
                 // I am in apt batch
-                relativepushIndex  = (prevBatch->finalPushCount == -1)? (pushIndex) : (pushIndex - prevBatch->finalPushCount);
-
+                relativepushIndex =
+                    (prevBatch->finalPushCount == -1)
+                        ? (pushIndex)
+                        : (pushIndex - prevBatch->finalPushCount);
 
                 myBatch = mayBeMyBatch;
-                break; //I got myBatch and probably I will get into it or the next.
+                break;  // I got myBatch and probably I will get into it or the
+                        // next.
             }
-            //iterate backwards untill you reach nill or your apt maybebatch.
-            mayBeMyBatch = prevBatch;            
+            // iterate backwards untill you reach nill or your apt maybebatch.
+            mayBeMyBatch = prevBatch;
         }
 
         // assert (relative push index not -1)
         // pushIndex = relativepushIndex;
-        // COUTATOMICTID("relativepushIndex: " << relativepushIndex  << "Absolute index " << pushIndex<< std::endl);
+        // COUTATOMICTID("relativepushIndex: " << relativepushIndex  <<
+        // "Absolute index " << pushIndex<< std::endl);
 
         while (true) {
-    
-            if (relativepushIndex == 0 && !myBatch->hasLeader.test_and_set())  // Should be test and set.
+            myBatch->eliminationArray[relativepushIndex].store(myNode);
+
+            if (relativepushIndex == 0 &&
+                !myBatch->hasLeader.test_and_set())  // Should be test and set.
             {
                 FreezeBatch(myAggregator, myBatch);
-            } 
-            else 
-            {
-                while (myBatch == myAggregator->batch)  // Spin until freezing has finished.
-                {
 
+            } else {
+                while (
+                    myBatch ==
+                    myAggregator->batch)  // Spin until freezing has finished.
+                {
                 }
             }
 
-            if (pushIndex >= myBatch->finalPushCount.load())  // I wasn't included.
+            if (pushIndex >=
+                myBatch->finalPushCount.load())  // I wasn't included.
             {
-                // COUTATOMICTID("not included "<< "myBatch->finalPushCount= " << myBatch->finalPushCount<< " pushIndex= "<< pushIndex<<std::endl)
-                relativepushIndex = pushIndex-myBatch->finalPushCount;
+                // COUTATOMICTID("not included "<< "myBatch->finalPushCount= "
+                // << myBatch->finalPushCount<< " pushIndex= "<<
+                // pushIndex<<std::endl)
+                relativepushIndex = pushIndex - myBatch->finalPushCount;
                 myBatch = myBatch->bnext;
-               
-                continue; // retry in next batch which has to be your apt batch.
+
+                continue;  // retry in next batch which has to be your apt
+                           // batch.
             }
 
-            myBatch->eliminationArray[relativepushIndex].store(myNode);
-
-            if (relativepushIndex < (myBatch->finalPopCount - myBatch->startingPopCntr))
-            {
+            if (relativepushIndex <
+                (myBatch->finalPopCount - myBatch->startingPopCntr)) {
                 // COUTATOMICTID("dummy eliminated " << value << std::endl);
                 return true;
             }
 
-            //first non eliminated thread become the leader
-            if (relativepushIndex == (myBatch->finalPopCount - myBatch->startingPopCntr))
-            {
+            // first non eliminated thread become the leader
+            if (relativepushIndex ==
+                (myBatch->finalPopCount - myBatch->startingPopCntr)) {
                 CreatePushSubstackAndPush(myBatch, relativepushIndex);
                 myBatch->isBatchApplied.store(true);
-            } 
-            else 
-            {
-                while (myBatch->isBatchApplied.load() == false)  // Wait for leader to apply to main.
-                {                     
+            } else {
+                while (myBatch->isBatchApplied.load() ==
+                       false)  // Wait for leader to apply to main.
+                {
                     // COUTATOMICTID("isBatchApplied "<<std::endl);
                 }
             }
@@ -276,6 +303,8 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
     }
 
     nodeptr PopFromMain(int popCount) {
+        // GSTATS_ADD(0, shared_ops, 1);
+
         while (true) {
             nodeptr top = main_top;
             nodeptr temp = top;
@@ -284,6 +313,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
                 temp = temp->next;
             }
             if (main_top.compare_exchange_strong(top, temp)) return top;
+            // GSTATS_ADD(0, retry_op, 1);
         }
     }
 
@@ -302,90 +332,98 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
     }
 
     bool pop(const int &tid) {
-
         Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
-        
+
         int popIndex = myAggregator->popCounter.fetch_add(1, tid);
         struct Batch<K, V> *mayBeMyBatch = myAggregator->batch;
         struct Batch<K, V> *myBatch = nullptr;
         int relativepopIndex = -1;
 
-        while(1)
-        {
+        while (1) {
             struct Batch<K, V> *prevBatch = mayBeMyBatch->bprev;
 
-            if (popIndex >= prevBatch->finalPopCount) // NOTEME: dummynode hass finalcount = -1
+            if (popIndex >=
+                prevBatch
+                    ->finalPopCount)  // NOTEME: dummynode hass finalcount = -1
             {
                 // I am in apt batch
-                relativepopIndex  = (prevBatch->finalPopCount == -1)? (popIndex) : (popIndex - prevBatch->finalPopCount);
+                relativepopIndex = (prevBatch->finalPopCount == -1)
+                                       ? (popIndex)
+                                       : (popIndex - prevBatch->finalPopCount);
 
                 myBatch = mayBeMyBatch;
-                break; //I got myBatch and probably I will get into it or the next.
+                break;  // I got myBatch and probably I will get into it or the
+                        // next.
             }
-            //iterate backwards untill you reach nill or your apt maybebatch.
-            mayBeMyBatch = prevBatch;            
+            // iterate backwards untill you reach nill or your apt maybebatch.
+            mayBeMyBatch = prevBatch;
         }
-
 
         while (true) {
             if (relativepopIndex == 0 && !myBatch->hasLeader.test_and_set()) {
                 FreezeBatch(myAggregator, myBatch);
-            } 
-            else 
-            {
-                while (myBatch == myAggregator->batch) {}
+            } else {
+                while (myBatch == myAggregator->batch) {
+                }
             }
 
             if (popIndex >= myBatch->finalPopCount.load())  // Not included.
-            {  
-                relativepopIndex = popIndex-myBatch->finalPopCount;
-                myBatch = myBatch->bnext;  
+            {
+                relativepopIndex = popIndex - myBatch->finalPopCount;
+                myBatch = myBatch->bnext;
                 continue;
             }
 
-            if (relativepopIndex < (myBatch->finalPushCount - myBatch->startingPushCntr))  // Eliminated.
+            if (relativepopIndex < (myBatch->finalPushCount -
+                                    myBatch->startingPushCntr))  // Eliminated.
             {
-                while (!myBatch->eliminationArray[relativepopIndex].load())  // Wait for Push
-                                                 // to write value.
+                while (!myBatch->eliminationArray[relativepopIndex]
+                            .load())  // Wait for Push
+                                      // to write value.
                 {
                 }
 
-                nodeptr my_ptr = myBatch->eliminationArray[relativepopIndex].load();
+                nodeptr my_ptr =
+                    myBatch->eliminationArray[relativepopIndex].load();
                 V returnValue = my_ptr->val;
                 return returnValue;
             }
 
-            if (relativepopIndex == (myBatch->finalPushCount - myBatch->startingPushCntr)) 
-            {
-                int remainingPops = (myBatch->finalPopCount - myBatch->startingPopCntr) - (myBatch->finalPushCount - myBatch->startingPushCntr);
-
-
+            if (relativepopIndex ==
+                (myBatch->finalPushCount - myBatch->startingPushCntr)) {
+                int remainingPops =
+                    (myBatch->finalPopCount - myBatch->startingPopCntr) -
+                    (myBatch->finalPushCount - myBatch->startingPushCntr);
                 myBatch->subStackTop.store(PopFromMain(remainingPops));
                 myBatch->isBatchApplied.store(true);
             } else {
-                while (myBatch->isBatchApplied.load() == false) {}
+                while (myBatch->isBatchApplied.load() == false) {
+                }
             }
-            return GetRetValue(
-                relativepopIndex - (myBatch->finalPushCount - myBatch->startingPushCntr), myBatch->subStackTop.load()
-            );
+            return GetRetValue(relativepopIndex - (myBatch->finalPushCount -
+                                                   myBatch->startingPushCntr),
+                               myBatch->subStackTop.load());
         }
         return true;
-
     }
 
     void initThread(const int tid) {
         // if (init[tid]) return;
         // else init[tid] = !init[tid];
-        // recmgr->initThread(tid);  
+        // recmgr->initThread(tid);
+        newBatchPtr.store(CreateNewBatch(), std::memory_order_relaxed);
+
 #ifdef USE_POOLS
         if (!init) {
             synchInitPool(&pool_batch, sizeof(Batch<K, V>));
             synchInitPool(&pool_node, sizeof(node_t<K, V>));
-            
+
             init = true;
         }
 #endif
-        if (0 == tid) COUTATOMICTID("comxagg batch size: " << sizeof(Batch<K, V>) << std::endl);
+        if (0 == tid)
+            COUTATOMICTID("comxagg batch size: " << sizeof(Batch<K, V>)
+                                                 << std::endl);
     }
 
     void deinitThread(const int tid) {
@@ -393,8 +431,6 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         // else init[tid] = !init[tid];
         // // recmgr->deinitThread(tid);
     }
-
-
 };
 
 #endif
