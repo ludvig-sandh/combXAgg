@@ -26,7 +26,7 @@
  
  using namespace std;
  
- #define RECORD_MANAGER_T record_manager<Reclaim, Alloc, Pool, node_t<K,V>>
+ #define RECORD_MANAGER_T record_manager<Reclaim, Alloc, Pool, node_t<K,V>, Batch<K,V>>
  #define DATA_STRUCTURE_T Stack<K, V, RECORD_MANAGER_T>
  
  template <typename K, typename V, class Reclaim = reclaimer_debra<K>, class Alloc = allocator_new<K>, class Pool = pool_none<K>>
@@ -115,8 +115,8 @@
          setbench_error("not implemented");
      }
      void printSummary() {
-        //  auto recmgr = ds->debugGetRecMgr();
-        //  recmgr->printStatus();
+         auto recmgr = ds->debugGetRecMgr();
+         recmgr->printStatus();
      }
      bool validateStructure() {
          bool valid;
