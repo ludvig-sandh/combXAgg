@@ -101,11 +101,11 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
 
     struct Batch<K, V> *CreateNewBatch() {
         struct Batch<K, V> *newBatch;
-#ifdef USE_POOLS
-        if (init)
-            newBatch = synchAllocObj(&pool_batch);
-        else
-#endif            // assert (0 && "failed");
+// #ifdef USE_POOLS
+//         if (init)
+//             newBatch = synchAllocObj(&pool_batch);
+//         else
+// #endif            // assert (0 && "failed");
         newBatch = new Batch<K, V>;
         // memset(newBatch, 0, sizeof(Batch<K, V>));
 
@@ -234,14 +234,16 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         bool amIFreezer = false;
 
         Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
-#ifdef USE_POOL
-nodeptr myNode = synchAllocObj(&pool_node);
-myNode->key = 0;
-myNode->val = 0;
-#else
+// #ifdef USE_POOL
+// nodeptr myNode = synchAllocObj(&pool_node);
+// myNode->key = 0;
+// myNode->val = 0;
+// #else
 nodeptr myNode = new node_t<K, V>(0, value);
-#endif
+// #endif
         while (true) {
+            amICombiner = false;
+            amIFreezer = false;
             struct Batch<K, V> *myBatch = myAggregator->batch;
             int pushIndex = myBatch->pushCounter.fetch_add(
                 1, tid);  // Opt. Check software F&A speed up?
@@ -313,7 +315,6 @@ nodeptr myNode = new node_t<K, V>(0, value);
                 myBatch->isBatchApplied.store(true, std::memory_order_release);
 
                 amICombiner = true;
-                // recmgr->retire(tid, myBatch); //combiner retires. no one can.
             }
             else 
             {
@@ -371,6 +372,8 @@ nodeptr myNode = new node_t<K, V>(0, value);
         Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
         bool success = false;
         while (true) {
+            amICombiner = false;
+            amIFreezer = false;
             struct Batch<K, V> *myBatch = myAggregator->batch;
             int popIndex = myBatch->popCounter.fetch_add(1, tid);
             // COUTATOMICTID("DUMMY popping " << std::endl);
@@ -469,14 +472,14 @@ nodeptr myNode = new node_t<K, V>(0, value);
         else init[tid] = !init[tid];
         recmgr->initThread(tid);  
 
-#ifdef USE_POOLS
-        if (!init) {
-            synchInitPool(&pool_batch, sizeof(Batch<K, V>));
-            synchInitPool(&pool_node, sizeof(node_t<K, V>));
+// #ifdef USE_POOLS
+//         if (!init) {
+//             synchInitPool(&pool_batch, sizeof(Batch<K, V>));
+//             synchInitPool(&pool_node, sizeof(node_t<K, V>));
             
-            init = true;
-        }
-#endif
+//             init = true;
+//         }
+// #endif
         if (0 == tid) COUTATOMICTID("comxagg batch size: " << sizeof(Batch<K, V>) << std::endl);
     }
 

@@ -17,6 +17,9 @@
 int MAX_AGGREGATOR_THREADS;
 #define NUMBER_AGGREGATORS 2
 
+#define BATCH_RETIRE
+#define NODE_RETIRE
+
 #define CHOOSE_AGGREGATOR(tId) (aggregator[(tId) / MAX_AGGREGATOR_THREADS])
 
 #include <immintrin.h>
@@ -36,9 +39,9 @@ class alignas(BYTES_IN_CACHE_LINE) node_t {
    public:
     K key;
     V val;
-    // PAD
+    PAD;
     std::atomic<node_t<K, V> *> next;
-    // PAD
+    PAD;
 
     node_t(K key, V val) {
         key = key;
@@ -50,45 +53,53 @@ class alignas(BYTES_IN_CACHE_LINE) node_t {
 #define nodeptr node_t<K, V> *
 
 template <typename K, typename V>
-struct alignas(BYTES_IN_CACHE_LINE) Batch {
+struct alignas(PREFETCH_SIZE_BYTES) Batch {
     // PAD
     std::atomic<nodeptr> *eliminationArray;
+    PAD;
     std::atomic<int> pushCounter;
+    PAD;
     std::atomic<int> popCounter;
-    // PAD
+    PAD;
     std::atomic<int> finalPushCount;
-    // PAD
+    PAD;
     std::atomic<int> finalPopCount;
     // int startingPushCntr;
     // int startingPopCntr;
-    // PAD
+    PAD;
     std::atomic<bool> isBatchApplied;
-    // PAD
+    PAD;
     std::atomic_flag hasLeader;
+    PAD;
     std::atomic<nodeptr> subStackTop;
-    // PAD
-    struct Batch *bnext;
-    struct Batch *bprev;
+    PAD;
+    // struct Batch *bnext;
+    // struct Batch *bprev;
     // std::atomic<struct Batch<K, V>*> bprev; //FIXME: needn't be atomic
     // std::atomic<struct Batch<K, V>*> bnext;
 };
 
 template <typename K, typename V>
-struct alignas(BYTES_IN_CACHE_LINE) Aggregator {
+struct alignas(PREFETCH_SIZE_BYTES) Aggregator {
     PAD;
     std::atomic<struct Batch<K, V> *> batch;
     PAD;
 };
 
-template <typename K, typename V, class RecManager>
+template <typename K, typename V, class RecMgr>
 class alignas(BYTES_IN_CACHE_LINE) Stack {
    private:
     static inline thread_local std::atomic<Batch<K, V> *> newBatchPtr{nullptr};
-    // PAD
+    PAD;
     std::atomic<nodeptr> main_top;
-    // PAD
+    PAD;
     Aggregator<K, V> aggregator[NUMBER_AGGREGATORS];
-    // PAD
+    PAD;
+    RecMgr * const recmgr;
+    PAD;
+    int init[MAX_THREADS_POW2] = {0,};
+    PAD;
+
 
     struct Batch<K, V> *CreateNewBatch() {
         struct Batch<K, V> *newBatch;
@@ -109,8 +120,9 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         newBatch->hasLeader.clear(std::memory_order_relaxed);
         newBatch->isBatchApplied.store(false, std::memory_order_relaxed);
         newBatch->subStackTop.store(NULL, std::memory_order_relaxed);
-        newBatch->eliminationArray =
-            malloc(sizeof(std::atomic<nodeptr>) * MAX_AGGREGATOR_THREADS);
+        // newBatch->eliminationArray =
+        //     malloc(sizeof(std::atomic<nodeptr>) * MAX_AGGREGATOR_THREADS);
+        newBatch->eliminationArray = (std::atomic<nodeptr> *)malloc(sizeof(std::atomic<nodeptr>)*MAX_AGGREGATOR_THREADS);
         // newBatch->next = NULL;
         for (size_t i = 0; i < MAX_AGGREGATOR_THREADS; i++) {
             // newBatch->eliminationArray[i].store(NULL,
@@ -122,10 +134,11 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
     }
 
     void FreezeBatch(struct Aggregator<K, V> *aggregator,
-                     std::atomic<struct Batch<K, V> *> batch) {
+                     std::atomic<struct Batch<K, V> *> batch, const int &tid) {
         // std::atomic<struct Batch<K, V> *> newBatch;
-        newBatchPtr.load()->bprev = batch.load();
-        batch.load()->bnext = newBatchPtr;
+        assert(newBatchPtr && "newBatchPtr is null");
+        // newBatchPtr.load()->bprev = batch.load();
+        // batch.load()->bnext = newBatchPtr;
         volatile int dummy = 0;
         for (int i = 0; i < 600; i++) {
             dummy++;
@@ -206,30 +219,46 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
     }
 
    public:
-    Stack(const int num_threads, const int _min_key, const int _max_key,
+    Stack(const int _num_threads, const int _min_key, const int _max_key,
           const V _NO_VALUE, unsigned int id)
-        : main_top(NULL) {
-        MAX_AGGREGATOR_THREADS = ceil(float(num_threads) / NUMBER_AGGREGATORS);
+        : main_top(NULL), recmgr (new RecMgr(_num_threads)) {
+
+        const int tid = 0;
+        initThread(tid);
+        recmgr->endOp(tid);
+
+        MAX_AGGREGATOR_THREADS = ceil(float(_num_threads) / NUMBER_AGGREGATORS);
         for (int i = 0; i < NUMBER_AGGREGATORS; i++) {
             aggregator[i].batch = CreateNewBatch();
             aggregator[i].batch.load()->finalPushCount = -1;
             aggregator[i].batch.load()->finalPopCount = -1;
 
             struct Batch<K, V> *batch1 = CreateNewBatch();
-            batch1->bprev = aggregator[i].batch;
-            aggregator[i].batch.load()->bnext = batch1;
+            // batch1->bprev = aggregator[i].batch;
+            // aggregator[i].batch.load()->bnext = batch1;
 
             aggregator[i].batch = batch1;
         }
     }
-    ~Stack() { COUTATOMIC("combxagg node size=" << sizeof(node_t<K, V>)); }
+    ~Stack() { 
+        recmgr->printStatus();
+        delete recmgr;
+        COUTATOMIC("combxagg node size=" << sizeof(node_t<K, V>)); 
+    }
 
     V peek(const int &tid) { return main_top ? main_top.load() : V(); }
 
     bool push(const int &tid, const V &value) {
+        recmgr->startOp(tid);
+
+        bool amICombiner = false;
+        bool amIFreezer = false;
+
         Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
         nodeptr myNode = new node_t<K, V>(0, value);
         while (true) {
+            amICombiner = false;
+            amIFreezer = false;
             struct Batch<K, V> *myBatch = myAggregator->batch;
             int pushIndex = myBatch->pushCounter.fetch_add(
                 1, tid);  // Opt. Check software F&A speed up?
@@ -238,8 +267,8 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
             if (pushIndex == 0 &&
                 !myBatch->hasLeader.test_and_set())  // Should be test and set.
             {
-                FreezeBatch(myAggregator, myBatch);
-
+                amIFreezer = true;
+                FreezeBatch(myAggregator, myBatch, tid);
             } else {
                 while (
                     myBatch ==
@@ -251,28 +280,49 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
             if (pushIndex >=
                 myBatch->finalPushCount.load())  // I wasn't included.
             {
-                
                 continue;  // retry in next batch which has to be your apt
                            // batch.
             }
+            
             if (pushIndex < myBatch->finalPopCount.load(
                                 std::memory_order_acquire))  // Eliminated.
             {
                 // COUTATOMICTID("dummy eliminated " << value << std::endl);
+                if (amIFreezer && (myBatch->finalPushCount.load(std::memory_order_acquire) ==
+                    myBatch->finalPopCount.load(std::memory_order_acquire))
+                ) 
+                {
+                    #ifdef BATCH_RETIRE
+                    recmgr->retire(tid, myBatch);
+                    #endif
+                }
+                
+                recmgr->endOp(tid);
                 return true;
             }
 
             if (pushIndex ==
-                myBatch->finalPopCount.load(std::memory_order_acquire)) {
+                myBatch->finalPopCount.load(std::memory_order_acquire)) 
+            {
                 CreatePushSubstackAndPush(myBatch, pushIndex);
                 myBatch->isBatchApplied.store(true, std::memory_order_release);
-            } else {
+                amICombiner = true;
+            }
+            else 
+            {
                 while (myBatch->isBatchApplied.load() ==
                        false)  // Wait for leader to apply to main.
                 {
                     // COUTATOMICTID("isBatchApplied "<<std::endl);
                 }
             }
+
+            #ifdef BATCH_RETIRE
+            if (amICombiner)
+                recmgr->retire(tid, myBatch);
+            #endif
+
+            recmgr->endOp(tid);
 
             return true;
         }
@@ -293,7 +343,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         }
     }
 
-    V GetRetValue(int index, nodeptr top) {
+    V GetRetValue(int index, nodeptr top, const int &tid) {
         if (top == NULL) {
             return V();
         }
@@ -304,18 +354,33 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
                 return V();
             }
         }
-        return temp->val;
+        
+        V res = temp->val;
+        recmgr->retire(tid, temp);
+        return res;
+        // return temp->val;
     }
 
     bool pop(const int &tid) {
+        
+        recmgr->startOp(tid);
+        bool amICombiner = false;
+        bool amIFreezer = false;
+
         Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
         bool success = false;
         while (true) {
+            amICombiner = false;
+            amIFreezer = false;
+            
             struct Batch<K, V> *myBatch = myAggregator->batch;
             int popIndex = myBatch->popCounter.fetch_add(1, tid);
             if (popIndex == 0 && !myBatch->hasLeader.test_and_set()) {
-                FreezeBatch(myAggregator, myBatch);
-            } else {
+                amIFreezer = true;
+                FreezeBatch(myAggregator, myBatch, tid);
+            }
+            else 
+            {
                 while (myBatch == myAggregator->batch) {
                 }
             }
@@ -337,6 +402,21 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
                 nodeptr my_ptr =
                     myBatch->eliminationArray[popIndex].load();
                 V returnValue = my_ptr->val;
+
+            
+                if (amIFreezer && (myBatch->finalPushCount.load(std::memory_order_acquire) ==
+                    myBatch->finalPopCount.load(std::memory_order_acquire)) //FIXME: can be relaxed
+                ) 
+                {
+                    #ifdef BATCH_RETIRE
+                    recmgr->retire(tid, myBatch);
+                    #endif
+                }
+            
+            
+                recmgr->endOp(tid);
+
+
                 return returnValue;
             }
             if (popIndex ==
@@ -347,7 +427,10 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
                 myBatch->subStackTop.store(PopFromMain(remainingPops),
                                            std::memory_order_release);
                 myBatch->isBatchApplied.store(true, std::memory_order_release);
-            } else {
+                amICombiner = true;
+            }
+            else
+            {
                 while (myBatch->isBatchApplied.load(
                            std::memory_order_acquire) == false) {
 #ifdef USE_BACKOFF
@@ -355,20 +438,44 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
 #endif
                 }
             }
-            return GetRetValue(
-                popIndex -
-                    myBatch->finalPushCount.load(std::memory_order_acquire),
-                myBatch->subStackTop.load(std::memory_order_acquire));
+            // return GetRetValue(
+            //     popIndex -
+            //         myBatch->finalPushCount.load(std::memory_order_acquire),
+            //     myBatch->subStackTop.load(std::memory_order_acquire));
+
+            V res = GetRetValue(
+            popIndex -
+                myBatch->finalPushCount.load(std::memory_order_acquire),
+            myBatch->subStackTop.load(std::memory_order_acquire), tid);
+
+            #ifdef BATCH_RETIRE
+            if (amICombiner)
+            {
+                //retire batch.
+                recmgr->retire(tid, myBatch);
+
+            }
+            #endif
+            recmgr->endOp(tid);
+            return res;
         }
         return true;
     }
 
+    RecMgr * debugGetRecMgr() {
+        return recmgr;
+    }
+
+
 
     void initThread(const int tid) {
-    // if (init[tid]) return;
-    // else init[tid] = !init[tid];
-    // recmgr->initThread(tid);
+
     newBatchPtr.store(CreateNewBatch(), std::memory_order_relaxed);
+
+    if (init[tid]) return;
+    else init[tid] = !init[tid];
+    recmgr->initThread(tid);
+
 
 #ifdef USE_POOLS
         if (!init) {
@@ -384,9 +491,9 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
 }
 
     void deinitThread(const int tid) {
-        // if (!init[tid]) return;
-        // else init[tid] = !init[tid];
-        // // recmgr->deinitThread(tid);
+        if (!init[tid]) return;
+        else init[tid] = !init[tid];
+        recmgr->deinitThread(tid);
     }
 };
 
