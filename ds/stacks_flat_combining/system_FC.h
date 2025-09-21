@@ -1,7 +1,7 @@
 #ifndef _SYSTEM_H_
 #define _SYSTEM_H_
 
-#include <config.h>
+#include <config_FC.h>
 
 #ifndef S_CACHE_LINE_SIZE
 #define S_CACHE_LINE_SIZE 256

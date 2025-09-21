@@ -155,37 +155,22 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
                     ->popCounter.load(std::memory_order_acquire),
                 std::memory_order_release);
 
-        // newBatchPtr.load()->startingPushCntr = mypushCntr;
-        // newBatchPtr.load()->startingPopCntr = mypopCntr;
 
         // Unlocks the waiting threads
         aggregator->batch.store(newBatchPtr);
 
         // long long numpush =
-        //     batch.load()->finalPushCount.load(std::memory_order_relaxed) -
-        //     batch.load()->startingPushCntr;
+        //     batch.load()->finalPushCount.load(std::memory_order_relaxed);
         // long long numpop =
-        //     batch.load()->finalPopCount.load(std::memory_order_relaxed) -
-        //     batch.load()->startingPopCntr;
+        //     batch.load()->finalPopCount.load(std::memory_order_relaxed);
 
         // long long num_noneliminated = (numpush - numpop) < 0
         //                                   ? (-1) * (numpush - numpop)
         //                                   : (numpush - numpop);
-        // if (num_noneliminated > 50) {
-        //     COUTATOMIC("dummy batch size = "
-        //                << num_noneliminated << " PUSH: " << numpush
-        //                << " POP: " << numpop << " STARTING PUSH COUNT "
-        //                << batch.load()->startingPushCntr << " FINAL PUSH COUNT "
-        //                << batch.load()->finalPushCount.load(
-        //                       std::memory_order_relaxed));
-        // }
         // long long num_eliminated = (numpush > numpop) ? 2 * numpop : 2 * numpush;
 
         // long long total_size = numpush + numpop;
 
-        // // COUTATOMICTID("dummy batch size = " << total_size
-        // // <<std::endl);
-        // // GSTATS_ADD(tid, comb_batchsize, total_size);
         // GSTATS_ADD(tid, number_batches, 1);
         // GSTATS_ADD(tid, number_non_eliminated, num_noneliminated);
         // GSTATS_ADD(tid, number_eliminated, num_eliminated);
@@ -234,8 +219,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
             aggregator[i].batch.load()->finalPopCount = -1;
 
             struct Batch<K, V> *batch1 = CreateNewBatch();
-            // batch1->bprev = aggregator[i].batch;
-            // aggregator[i].batch.load()->bnext = batch1;
+
 
             aggregator[i].batch = batch1;
         }

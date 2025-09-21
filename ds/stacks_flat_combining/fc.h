@@ -15,9 +15,9 @@
 
 #include <stdint.h>
 
-#include "config.h"
-#include "primitives.h"
-#include "system.h"
+#include <config_FC.h>
+#include <primitives_FC.h>
+#include <system_FC.h>
 
 /// @brief HalfFCRequest should not be directly used by the user.
 /// It is internally used for proper alignment of the FCRequest struct.
@@ -100,9 +100,7 @@ RetVal FCApplyOp(FCStruct *l, FCThreadState *st_thread, RetVal (*sfunc)(void *, 
 #include <string.h>
 #include <stdint.h>
 
-#include "config.h"
-#include "primitives.h"
-#include "threadtools.h"
+#include <threadtools_FC.h>
 
 #define FC_CLEANUP_FREQUENCY     10
 #define FC_CLEANUP_OLD_THRESHOLD 10
@@ -151,16 +149,12 @@ RetVal FCApplyOp(FCStruct *lock, FCThreadState *st_thread, RetVal (*sfunc)(void 
     synchNonTSOFence();
     request->pending = true;
     synchStoreFence();
-    // COUTATOMIC("REACHED THIS POINT" << __LINE__ <<std::endl);
     while (true) {
-    // COUTATOMIC("REACHED THIS POINT" << __LINE__ <<std::endl);
 
         if (lock->lock == 0 && synchCAS64(&lock->lock, 0, 1)) {
-    // COUTATOMIC("REACHED THIS POINT" << __LINE__<<std::endl);
 
             break;
         } else {
-    // COUTATOMIC("REACHED THIS POINT" << __LINE__<<std::endl);
 
             while (lock->lock && request->pending && request->active) {
                 synchResched();
@@ -172,9 +166,6 @@ RetVal FCApplyOp(FCStruct *lock, FCThreadState *st_thread, RetVal (*sfunc)(void 
             }
         }
     }
-    // COUTATOMIC("REACHED THIS POINT" << __LINE__<<std::endl);
-
-    //     COUTATOMIC("HEAD OF LIST:" << lock->head << std::endl);
 
 
     if (request->active == false) FCEnqueueRequest(lock, st_thread);
@@ -182,25 +173,12 @@ RetVal FCApplyOp(FCStruct *lock, FCThreadState *st_thread, RetVal (*sfunc)(void 
     int count = lock->count;
     volatile FCRequest *cur;
 
-    // COUTATOMIC("REACHED THIS POINT" << __LINE__<<std::endl);
-    // if(lock->head!=NULL)
-    //     {COUTATOMIC("Curr:" << lock->head << " Curr->next: " << lock->head->next << std::endl);
-    //         if(lock->head == 1)
-    //             free(&count);
-    //     }
 
 #ifdef DEBUG_FC_STACK
     lock->rounds += 1;
 #endif
     for (i = 0; i < FC_COMBINING_ROUNDS; i++) {
-        // int counter =0;
         for (cur = lock->head; cur != NULL; cur = cur->next) {
-    // COUTATOMIC("REACHED THIS POINT" << __LINE__<<std::endl);
-            // counter ++;
-            // if(counter > 10)
-            // {
-            //     free(&counter);
-            // }
             if (cur->pending) {
                 cur->val = sfunc(state, cur->val, pid);
                 synchNonTSOFence();
@@ -213,8 +191,6 @@ RetVal FCApplyOp(FCStruct *lock, FCThreadState *st_thread, RetVal (*sfunc)(void 
             }
         }
     }
-
-    // COUTATOMIC("REACHED THIS POINT" << __LINE__<<std::endl);
 
     if (!(count % FC_CLEANUP_FREQUENCY)) {
         volatile FCRequest *prev = (FCRequest *)lock->head;

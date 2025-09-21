@@ -12,6 +12,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <vector>
+#include <mutex>
+
+
+
 #ifdef __cplusplus
 
 // #include <gflags/gflags.h>
@@ -25,7 +30,6 @@
 
 bool FLAGS_reuse_memory = true;
 bool FLAGS_warn_on_overflow = false;
-
 
 namespace scal {
 
@@ -72,12 +76,14 @@ _always_inline void* CallocAligned(size_t num, size_t size, size_t alignment) {
 class ThreadLocalAllocator {
  public:
   static _always_inline ThreadLocalAllocator& Get();
-
+  static void Destroy();
+  static void GlobalDestroyAll();
   _always_inline ThreadLocalAllocator()
       : prealloc_size_(0),
         start_(0),
         end_(0),
-        current_(0) {
+        current_(0),
+        last_size_(0) {
   }
 
   _always_inline void Init(size_t prealloc_size, bool touch_memory);
@@ -102,7 +108,8 @@ class ThreadLocalAllocator {
   size_t last_size_;
 };
 
-
+static std::mutex tla_registry_mutex;
+static std::vector<ThreadLocalAllocator*> tla_registry;
 void ThreadLocalAllocator::CreateTlaKey() {
   pthread_key_create(&tla_key, NULL);
 }
@@ -110,29 +117,70 @@ void ThreadLocalAllocator::CreateTlaKey() {
 
 ThreadLocalAllocator& ThreadLocalAllocator::Get() {
   pthread_once(&tla_key_once, ThreadLocalAllocator::CreateTlaKey);
+  // COUTATOMIC("REAFASFASF" << std::endl);
   ThreadLocalAllocator* tla = static_cast<ThreadLocalAllocator*>(
       pthread_getspecific(tla_key));
   if (tla == NULL) {
     const size_t tla_size = RoundSize(sizeof(*tla), kPageSize);
     VERBOSE COUTATOMIC("ThreadLocalAllocator::Get tla_size=" << tla_size<< std::endl);
-    void* mem = scal::MallocAligned(tla_size, kPageSize);
+    void* mem = scal::MallocAligned(tla_size, kPageSize); //HERE
     tla = new(mem) ThreadLocalAllocator();
     if (pthread_setspecific(tla_key, tla)) {
       perror("pthread_setspecific");
       abort();
     }
+    {
+        std::lock_guard<std::mutex> lock(tla_registry_mutex);
+        tla_registry.push_back(tla);
+    }
   }
   return *tla;
 }
 
+void ThreadLocalAllocator::GlobalDestroyAll() {
+    std::lock_guard<std::mutex> lock(tla_registry_mutex);
+    for (ThreadLocalAllocator* tla : tla_registry) {
+        if (tla == nullptr) continue;
 
+        if (tla->start_ != 0) {
+            free(reinterpret_cast<void*>(tla->start_));
+            tla->start_ = tla->end_ = tla->current_ = 0;
+            tla->prealloc_size_ = 0;
+            tla->last_size_ = 0;
+        }
+
+        tla->~ThreadLocalAllocator();
+        free(reinterpret_cast<void*>(tla));
+    }
+    tla_registry.clear();
+}
+
+void ThreadLocalAllocator::Destroy() {
+    ThreadLocalAllocator* tla = static_cast<ThreadLocalAllocator*>(
+        pthread_getspecific(tla_key));
+        COUTATOMIC("\n TLA: " << tla << std::endl);
+    if (tla != nullptr) {
+        // Free the buffer if allocated
+        if (tla->start_ != 0) {
+            free(reinterpret_cast<void*>(tla->start_));
+            tla->start_ = tla->end_ = tla->current_ = 0;
+            tla->prealloc_size_ = 0;
+            tla->last_size_ = 0;
+        }
+
+        tla->~ThreadLocalAllocator();
+        free(reinterpret_cast<void*>(tla));
+        // Clear the pthread-specific pointer
+        pthread_setspecific(tla_key, nullptr);
+    }
+}
 void ThreadLocalAllocator::Init(size_t prealloc_pages, bool touch_memory) {
   prealloc_size_ = kPageSize * prealloc_pages;
 
   VERBOSE COUTATOMIC("ThreadLocalAllocator::Init prealloc_size_=" << prealloc_size_<< std::endl);
 
   start_ = reinterpret_cast<uintptr_t>(
-      scal::MallocAligned(prealloc_size_, kPageSize));
+      scal::MallocAligned(prealloc_size_, kPageSize)); // HERE
   ResetBuffer();
   if (touch_memory) {
     for (size_t i = 0; i < (prealloc_size_ / sizeof(intptr_t)); i++) {

@@ -6,7 +6,7 @@
 #ifndef _THREAD_H_
 #define _THREAD_H_
 
-#include <config.h>
+#include <config_FC.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -134,11 +134,10 @@ inline bool synchIsSystemOversubscribed(void);
 #define _GNU_SOURCE
 #include <unistd.h>
 
-// #include <config.h>
-// #include <threadtools.h>
-#include <primitives.h>
-#include <uthreads.h>
-#include <barrier.h>
+
+#include <primitives_FC.h>
+#include <uthreads_FC.h>
+#include <barrier_FC.h>
 #include <sched.h> // CPU_SET, CPU_ZERO, cpu_set_t, sched_setaffinity()
 #include <pthread.h>
 #include <stdio.h>
@@ -376,6 +375,7 @@ int synchStartThreadsN(uint32_t nthreads, void *(*func)(void *), uint32_t uthrea
 
 void synchJoinThreadsN(uint32_t nthreads) {
     synchBarrierLastLeave(&bar);
+    COUTATOMIC("freeing threads" << std::endl);
     synchFreeMemory(__threads, nthreads * sizeof(pthread_t));
 }
 

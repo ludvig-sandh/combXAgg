@@ -13,10 +13,11 @@
 #define _FCSTACK_H_
 
 #include <fc.h>
-#include <config.h>
-#include <primitives.h>
-#include <pool.h>
-#include <queue-stack.h>
+#include <config_FC.h>
+#include <primitives_FC.h>
+#include <pool_FC.h>
+#include <queue-stack_FC.h>
+
 
 /// @brief FCStackStruct stores the state of an instance of the FC-Stack concurrent stack implementation.
 /// FCStackStruct should be initialized using the FCStackInit function.
@@ -66,10 +67,6 @@ void FCStackPush(FCStackStruct *object_struct, FCStackThreadState *lobject_struc
 /// @param pid The pid of the calling thread.
 /// @return The value of the removed element.
 RetVal FCStackPop(FCStackStruct *object_struct, FCStackThreadState *lobject_struct, int pid);
-#include <config.h>
-#include <primitives.h>
-#include <pool.h>
-#include <queue-stack.h>
 
 static const int POP_OP = INT_MIN;
 static __thread SynchPoolStruct pool_node CACHE_ALIGN;
@@ -91,8 +88,11 @@ inline static RetVal serialPushPop(void *state, ArgVal arg, int pid) {
         volatile Node *node = st->top;
 
         if (st->top != NULL) {
+            RetVal ret = node->val;
             st->top = st->top->next;
-            return node->val;
+            synchNonTSOFence();
+            synchRecycleObj(&pool_node, (void *)node);
+            return ret;
         } else return -1;
     } else {
         FCStackStruct *st = (FCStackStruct *)state;
@@ -102,7 +102,6 @@ inline static RetVal serialPushPop(void *state, ArgVal arg, int pid) {
         node->next = st->top;
         node->val = arg;
         st->top = node;
- 
         return 0;
     }
 }

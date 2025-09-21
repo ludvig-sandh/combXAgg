@@ -7,8 +7,8 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <config.h>
-#include <system.h>
+#include <config_FC.h>
+#include <system_FC.h>
 // #include <stats.h>
 #include <stddef.h>
 #include <malloc.h> // for memalign

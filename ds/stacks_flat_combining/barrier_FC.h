@@ -47,9 +47,8 @@ inline void synchBarrierLastLeave(SynchBarrier *bar);
 
 
 
-// #include <barrier.h>
-#include <primitives.h>
-// #include <threadtools.h>
+#include <primitives_FC.h>
+#include <threadtools_FC.h>
 
 inline void synchBarrierSet(SynchBarrier *bar, uint32_t n) {
     bar->arrive = n;

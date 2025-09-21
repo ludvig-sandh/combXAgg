@@ -12,7 +12,7 @@
 #define STACK_IMPL_H
 
 #include <fcstack.h>
-#include <primitives.h>
+#include <primitives_FC.h>
 
 #include "record_manager.h"
 
@@ -57,59 +57,38 @@ class Stack {
           const V _NO_VALUE, unsigned int id)
         : _top(NULL) {
             pthread_barrier_init(&bar,NULL,num_threads);
-        // COUTATOMICTID("Init stack " << std::endl);
-
         object_struct =
             synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(FCStackStruct));
         FCStackInit(object_struct, num_threads);
-        // CCStackThreadState *th_state;
-        // long i, rnum;
-        // th_state = reinterpret_cast<CCStackThreadState *>(
-        //     synchGetAlignedMemory(CACHE_LINE_SIZE,
-        //     sizeof(CCStackThreadState)));
-        // CCStackThreadStateInit(object_struct, th_state, (int)id);
     }
-    ~Stack() {}
+    ~Stack() {
+        int *int_ptr = synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(int));
+    }
 
     V peek(const int &tid) { return NULL; }
 
     bool push(const int &tid, const V &value) {
-        // COUTATOMICTID("dummy pushing " << value << std::endl);
-
         FCStackPush(object_struct, threadData[tid].th_state, tid, tid);
         bool success = true;
         return success;
     }
 
     bool pop(const int &tid) {
-        // COUTATOMICTID("DUMMY popping " << std::endl);
-
         FCStackPop(object_struct, threadData[tid].th_state, tid);
-
         bool success = true;
         return success;
     }
 
     void initThread(const int tid) {
-        // if (init[tid]) return;
-        // else init[tid] = !init[tid];
-        // recmgr->initThread(tid);
-        // COUTATOMICTID("Init thread " << std::endl);
-
         threadData[tid].th_state = reinterpret_cast<FCStackThreadState *>(
             synchGetAlignedMemory(CACHE_LINE_SIZE, sizeof(FCStackThreadState)));
-
         FCStackThreadStateInit(object_struct, threadData[tid].th_state,
                                (int)tid);
     }
 
     void deinitThread(const int tid) {
-        // COUTATOMICTID("Deinit thread"<< std::endl);
         object_struct->object_struct.head=NULL;
         pthread_barrier_wait(&bar);
-        // if (!init[tid]) return;
-        // else init[tid] = !init[tid];
-        // // recmgr->deinitThread(tid);
     }
 };
 

@@ -9,8 +9,8 @@
 #include <ucontext.h>
 #include <setjmp.h>
 
-#include <config.h>
-#include <primitives.h>
+#include <config_FC.h>
+#include <primitives_FC.h>
 
 /// @brief This function initiates the fiber environment inside a posix thread.
 /// @param max The maximum number of fibers that the current posix thread could create.
@@ -33,7 +33,6 @@ int32_t synchCurrentFiberIndex(void);
 
 
 
-// #include <uthreads.h>
 
 #define FIBER_STACK 65536
 
@@ -89,6 +88,7 @@ void synchFiberYield(void) {
     } while (FIBER_LIST[currentFiber].active == false);
     switch_to_fiber(&FIBER_LIST[prev_fiber], &FIBER_LIST[currentFiber]);
     if (FIBER_RECYCLE != NULL) {
+        COUTATOMIC("freeing Fiber" << std::endl);
         synchFreeMemory(FIBER_RECYCLE, sizeof(Fiber));
         FIBER_RECYCLE = NULL;
     }

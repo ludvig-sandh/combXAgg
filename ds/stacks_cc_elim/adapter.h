@@ -37,36 +37,6 @@
      set<K> s;
      K minkey, maxkey;
  
-    //  tuple<bool, K> validateHelper(node_t<K,V>* node, int depth) {
-    //      if (s.find(node->key) != s.end()) {
-    //          assert(false);
-    //          return make_tuple(false, 0);
-    //      }
- 
-    //      if (!node->left && !node->right) {
-    //          s.insert(node->key);
-    //          cout << "Leaf: " << node->key << endl;
-    //          return make_tuple(true, node->key);
-    //      }
- 
-    //      if (!node->left || !node->right) {
-    //          assert(false);
-    //          return make_tuple(false, 0);
-    //      }
- 
-    //      if (node->key <= node->left->key || node->key > node->right->key) {
-    //          assert(false);
-    //          return make_tuple(false, 0);
-    //      }
- 
-    //      bool leftValid, rightValid;
-    //      int leftSum, rightSum;
-    //      tie(leftValid, leftSum) = validateHelper(node->left, depth + 1);
-    //      tie(rightValid, rightSum) = validateHelper(node->right, depth + 1);
-    //      std::cout << depth << " " << leftSum << " " << rightSum << endl;
-    //      return make_tuple(leftValid && rightValid, leftSum + rightSum);
-    //  }
- 
  public:
      ds_adapter(const int NUM_THREADS,
                 const K& KEY_MIN,
@@ -115,14 +85,9 @@
          setbench_error("not implemented");
      }
      void printSummary() {
-        //  auto recmgr = ds->DEBUG_CCGetRecMgr();
-        //  recmgr->printStatus();
      }
      bool validateStructure() {
          bool valid;
-        //  K sumOfKeys;
-        //  tie(valid, sumOfKeys) = validateHelper(ds->getRoot(), 0);
-        //  cout << sumOfKeys - minkey - maxkey << endl;
          return valid;
      }
      void printObjectSizes() {

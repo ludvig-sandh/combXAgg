@@ -58,12 +58,6 @@ class Stack {
         object_struct =
             synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(CCStackStruct));
         CCStackInit(object_struct, num_threads);
-        // CCStackThreadState *th_state;
-        // long i, rnum;
-        // th_state = reinterpret_cast<CCStackThreadState *>(
-        //     synchGetAlignedMemory(CACHE_LINE_SIZE,
-        //     sizeof(CCStackThreadState)));
-        // CCStackThreadStateInit(object_struct, th_state, (int)id);
     }
     ~Stack() {}
 
@@ -72,33 +66,23 @@ class Stack {
     bool push(const int &tid, const V &value) {
         CCStackPush(object_struct, threadData[tid].th_state, tid, tid);
         bool success = true;
-        // COUTATOMICTID("dummy pushing " << value << std::endl);
         return success;
     }
 
     bool pop(const int &tid) {
         CCStackPop(object_struct, threadData[tid].th_state, tid);
-
         bool success = true;
-        // COUTATOMICTID("DUMMY popping " << std::endl);
         return success;
     }
 
     void initThread(const int tid) {
-        // if (init[tid]) return;
-        // else init[tid] = !init[tid];
-        // recmgr->initThread(tid);
         threadData[tid].th_state = reinterpret_cast<CCStackThreadState *>(
             synchGetAlignedMemory(CACHE_LINE_SIZE, sizeof(CCStackThreadState)));
-
         CCStackThreadStateInit(object_struct, threadData[tid].th_state,
                                (int)tid);
     }
 
     void deinitThread(const int tid) {
-        // if (!init[tid]) return;
-        // else init[tid] = !init[tid];
-        // // recmgr->deinitThread(tid);
     }
 };
 

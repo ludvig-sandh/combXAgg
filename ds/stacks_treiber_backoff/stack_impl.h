@@ -55,21 +55,34 @@ class Backoff {
 };
 
 // --------------------- Treiber Stack ---------------------
-template <typename K, typename V, class RecManager>
+template <typename K, typename V, class RecMgr>
 class Stack {
    private:
     PAD;
     std::atomic<nodeptr> _top;
     PAD;
-
+    RecMgr *const recmgr;
+    PAD;
+    int init[MAX_THREADS_POW2] = {
+        0,
+    };
     static constexpr int MIN_DELAY = 1;       // nanoseconds
     static constexpr int MAX_DELAY = 1000;    // nanoseconds
 
    public:
     Stack(const int num_threads, const int _min_key, const int _max_key,
           const V _NO_VALUE, unsigned int id)
-        : _top(nullptr) {}
-    ~Stack() {}
+        : _top(nullptr), recmgr(new RecMgr(num_threads)) {}
+    ~Stack() {
+        while (_top.load() != nullptr) {
+            nodeptr old_top = _top.load();
+            _top.store(old_top->next);
+            delete old_top;
+        }
+        recmgr->printStatus();
+        delete recmgr;
+        
+    }
 
     V peek(const int &tid) {
         nodeptr t = _top.load(std::memory_order_acquire);
@@ -77,6 +90,7 @@ class Stack {
     }
 
     bool push(const int &tid, const V &value) {
+        recmgr->startOp(tid);
         nodeptr new_top = new node_t<K, V>(0, value);
         Backoff backoff(MIN_DELAY, MAX_DELAY);
         nodeptr old_top;
@@ -87,6 +101,7 @@ class Stack {
 
             if (_top.compare_exchange_strong(old_top, new_top,
                                              std::memory_order_acq_rel)) {
+                recmgr->endOp(tid);
                 return true;
             } else {
                 backoff.backoff();
@@ -95,6 +110,7 @@ class Stack {
     }
 
     V pop(const int &tid) {
+        recmgr->startOp(tid);
         Backoff backoff(MIN_DELAY, MAX_DELAY);
         nodeptr old_top;
         nodeptr new_top;
@@ -102,6 +118,7 @@ class Stack {
         while (true) {
             old_top = _top.load(std::memory_order_acquire);
             if (old_top == nullptr) {
+                recmgr->endOp(tid);
                 return V();  // stack empty
             }
             new_top = old_top->next.load(std::memory_order_relaxed);
@@ -109,12 +126,30 @@ class Stack {
             if (_top.compare_exchange_strong(old_top, new_top,
                                              std::memory_order_acq_rel)) {
                 V val = old_top->val;
+                recmgr->retire(tid, old_top);
                 // delete old_top;  // free memory (or use RecManager)
+                recmgr->endOp(tid);
                 return val;
             } else {
                 backoff.backoff();
             }
         }
+    }
+    RecMgr *debugGetRecMgr() { return recmgr; }
+    void initThread(const int tid) {
+        if (init[tid])
+            return;
+        else
+            init[tid] = !init[tid];
+        recmgr->initThread(tid);
+    }
+
+    void deinitThread(const int tid) {
+        if (!init[tid])
+            return;
+        else
+            init[tid] = !init[tid];
+        recmgr->deinitThread(tid);
     }
 };
 

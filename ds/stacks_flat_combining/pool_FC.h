@@ -8,7 +8,7 @@
 #define _POOL_H_
 
 #include <stdint.h>
-#include <primitives.h>
+#include <primitives_FC.h>
 
 /// @brief A struct for the block object.
 typedef struct SynchBlockObject {
@@ -88,13 +88,8 @@ void synchRollback(SynchPoolStruct *pool, uint32_t num_objs);
 /// @param pool A pointer to the pool of objects.
 void synchDestroyPool(SynchPoolStruct *pool);
 
-
-
-
 #include <unistd.h>
-
-#include <config.h>
-// #include <pool.h>
+#include <config_FC.h>
 #include <stdio.h>
 
 #define POOL_BLOCK_METADATA_SIZE sizeof(SynchPoolBlockMetadata)
@@ -216,6 +211,7 @@ void synchDestroyPool(SynchPoolStruct *pool) {
     while (pool->head_block != NULL) {
         SynchPoolBlock *block = pool->head_block;
         pool->head_block = pool->head_block->metadata.next;
+        COUTATOMIC("freeing POOL" << std::endl);
         synchFreeMemory(block, BLOCK_SIZE_CC);
     }
     pool->head_block = NULL;

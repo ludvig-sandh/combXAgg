@@ -88,10 +88,10 @@
      }
  
      void initThread(const int tid) {
-        //  ds->initThread(tid);
+         ds->initThread(tid);
      }
      void deinitThread(const int tid) {
-        //  ds->deinitThread(tid);
+         ds->deinitThread(tid);
      }
  
      V insert(const int tid, const K& key, const V& val) {
@@ -115,8 +115,8 @@
          setbench_error("not implemented");
      }
      void printSummary() {
-        //  auto recmgr = ds->debugGetRecMgr();
-        //  recmgr->printStatus();
+         auto recmgr = ds->debugGetRecMgr();
+         recmgr->printStatus();
      }
      bool validateStructure() {
          bool valid;
