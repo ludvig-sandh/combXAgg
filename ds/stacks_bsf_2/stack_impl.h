@@ -77,6 +77,11 @@ struct alignas(PREFETCH_SIZE_BYTES) Batch {
     // struct Batch *bprev;
     // std::atomic<struct Batch<K, V>*> bprev; //FIXME: needn't be atomic
     // std::atomic<struct Batch<K, V>*> bnext;
+    ~Batch() {
+        // delete[] eliminationArray;
+        if (eliminationArray)
+            free(eliminationArray);
+    }
 };
 
 template <typename K, typename V>
