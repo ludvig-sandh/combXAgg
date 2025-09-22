@@ -240,14 +240,14 @@ public:
         // TIMELINE_BLIP_Llu(tid, "numFreesPerStartOp", threadData[tid].numFreesPerStartOp);
         freelist->appendMoveFullBlocks(freeable);
 
-#   ifdef GSTATS_HANDLE_STATS
+#   ifdef GSTATS_HANDLE_STATS1
         // GSTATS_APPEND(tid, limbobag_size_in_epoch, getSizeInNodesForThisThread(tid));
         // GSTATS_APPEND(tid, freelist_size_in_epoch, freelist->computeSizeFast());
         // GSTATS_APPEND(tid, garbage_in_epoch, freelist->computeSizeFast() + getSizeInNodesForThisThread(tid));
         GSTATS_SET_IX(tid, garbage_in_epoch, freelist->computeSizeFast() + getSizeInNodesForThisThread(tid), threadData[tid].debug_announcedEpoch/2 /* account for quiescent bit */);
 #   endif
 #else
-#   ifdef GSTATS_HANDLE_STATS
+#   ifdef GSTATS_HANDLE_STATS1
         GSTATS_SET_IX(tid, garbage_in_epoch, getSizeInNodesForThisThread(tid), threadData[tid].debug_announcedEpoch/2 /* account for quiescent bit */);
         // GSTATS_APPEND(tid, garbage_in_epoch, getSizeInNodesForThisThread(tid));
         // GSTATS_APPEND(tid, limbobag_size_in_epoch, getSizeInNodesForThisThread(tid));

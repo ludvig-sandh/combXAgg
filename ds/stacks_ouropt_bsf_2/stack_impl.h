@@ -76,6 +76,13 @@ struct alignas(BYTES_IN_CACHE_LINE) Batch {
     PAD;
     // std::atomic<struct Batch<K, V>*> bprev; //FIXME: needn't be atomic
     // std::atomic<struct Batch<K, V>*> bnext;
+
+    ~Batch() {
+        // delete[] eliminationArray;
+        if (eliminationArray)
+            free(eliminationArray);
+    }
+
 };
 
 template <typename K, typename V>
@@ -124,7 +131,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         // newBatch->eliminationArray =
             // malloc(sizeof(std::atomic<nodeptr>) * MAX_AGGREGATOR_THREADS);
 
-        newBatch->eliminationArray = (std::atomic<nodeptr> *)malloc(sizeof(std::atomic<nodeptr>)*MAX_AGGREGATOR_THREADS);
+        newBatch->eliminationArray = (std::atomic<nodeptr> *)malloc(sizeof(std::atomic<nodeptr>)*MAX_AGGREGATOR_THREADS); // FIXME: create a batch destructor to free this memory
 
             // newBatch->next = NULL;
         for (size_t i = 0; i < MAX_AGGREGATOR_THREADS; i++) {
@@ -529,6 +536,9 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         if (!init[tid]) return;
         else init[tid] = !init[tid];
         recmgr->deinitThread(tid);
+        // if (0 == tid)
+            // COUTATOMICTID("deinitthread" << std::endl);
+
     }
 };
 

@@ -16,7 +16,7 @@ ifneq ($(has_libnuma), 0)
 	LDFLAGS += -lnuma
 endif
 
-use_asan=0
+use_asan=1
 ifneq ($(use_asan), 0)
 	LDFLAGS += -fsanitize=address -static-libasan
 endif
@@ -70,10 +70,10 @@ endif
 ## but it should only be used for data structures and workloads in which, on average,
 ## at most one object per data structure operation is allocated.
 ##
-debra_orig_free=1
-ifeq ($(debra_orig_free), 1)
-	FLAGS += -DDEBRA_ORIGINAL_FREE
-endif
+# debra_orig_free=1
+# ifeq ($(debra_orig_free), 1)
+# 	FLAGS += -DDEBRA_ORIGINAL_FREE
+# endif
 
 skip_validation=1
 ifeq ($(skip_validation), 1)
