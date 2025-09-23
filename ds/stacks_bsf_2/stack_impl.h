@@ -89,6 +89,9 @@ struct alignas(PREFETCH_SIZE_BYTES) Aggregator {
     PAD;
     std::atomic<struct Batch<K, V> *> batch;
     PAD;
+    ~Aggregator() {
+        delete batch.load();
+    }
 };
 
 template <typename K, typename V, class RecMgr>
@@ -231,6 +234,19 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
     }
     ~Stack() { 
         recmgr->printStatus();
+
+        nodeptr curr = main_top.load(std::memory_order_relaxed);
+        while (curr) {
+            nodeptr next = curr->next.load(std::memory_order_relaxed);
+            delete curr;
+            curr = next;
+        }
+        main_top.store(nullptr, std::memory_order_relaxed);
+
+        COUTATOMIC("maintop=" << main_top); 
+
+        delete newBatchPtr;
+
         delete recmgr;
         COUTATOMIC("combxagg node size=" << sizeof(node_t<K, V>)); 
     }
