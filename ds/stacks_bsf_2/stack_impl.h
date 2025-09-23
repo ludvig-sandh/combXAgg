@@ -89,9 +89,9 @@ struct alignas(PREFETCH_SIZE_BYTES) Aggregator {
     PAD;
     std::atomic<struct Batch<K, V> *> batch;
     PAD;
-    ~Aggregator() {
-        delete batch.load();
-    }
+    // ~Aggregator() {
+    //     delete batch.load();
+    // }
 };
 
 template <typename K, typename V, class RecMgr>
@@ -222,9 +222,11 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
 
         MAX_AGGREGATOR_THREADS = ceil(float(_num_threads) / NUMBER_AGGREGATORS);
         for (int i = 0; i < NUMBER_AGGREGATORS; i++) {
-            aggregator[i].batch = CreateNewBatch();
-            aggregator[i].batch.load()->finalPushCount = -1;
-            aggregator[i].batch.load()->finalPopCount = -1;
+            
+            // aj commented the following. Not sure what was its purpose???? This is a leak.
+            // aggregator[i].batch = CreateNewBatch();
+            // aggregator[i].batch.load()->finalPushCount = -1;
+            // aggregator[i].batch.load()->finalPopCount = -1;
 
             struct Batch<K, V> *batch1 = CreateNewBatch();
 
@@ -245,8 +247,14 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
 
         COUTATOMIC("maintop=" << main_top); 
 
+        
+        for (int i = 0; i < NUMBER_AGGREGATORS; i++) {
+            struct Batch<K, V> *batch = aggregator[i].batch.load();
+            if (batch) delete batch;
+        }
+        
+        
         delete newBatchPtr;
-
         delete recmgr;
         COUTATOMIC("combxagg node size=" << sizeof(node_t<K, V>)); 
     }
@@ -266,7 +274,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
             amIFreezer = false;
             struct Batch<K, V> *myBatch = myAggregator->batch;
             int pushIndex = myBatch->pushCounter.fetch_add(
-                1, tid);  // Opt. Check software F&A speed up?
+                1, tid);  // Opt. Check software F&A speed up? //FIXMEURGENT: fetch ad shoould just take 1 int param other should be memoryorder.
             myBatch->eliminationArray[pushIndex].store(myNode);
 
             if (pushIndex == 0 &&
@@ -496,6 +504,10 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
 }
 
     void deinitThread(const int tid) {
+        Batch<K, V> *bptr = newBatchPtr.load();
+        delete bptr; // FIXME: can other threads be still accessing this batch? I think yes.
+        newBatchPtr.store(nullptr);
+
         if (!init[tid]) return;
         else init[tid] = !init[tid];
         recmgr->deinitThread(tid);
