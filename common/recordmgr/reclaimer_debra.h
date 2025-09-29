@@ -456,6 +456,7 @@ public:
         // the data structure and are now quiescent!!
         for (int i=0;i<NUMBER_OF_EPOCH_BAGS;++i) {
             if (threadData[tid].epochbags[i]) {
+                // COUTATOMICTID("reclaimer_debra deinitThread: moving remaining objects in epoch bag " << i << " to pool "<< threadData[tid].epochbags[i]->computeSize() << std::endl);
                 this->pool->addMoveAll(tid, threadData[tid].epochbags[i]);
                 delete threadData[tid].epochbags[i];
                 threadData[tid].epochbags[i] = NULL;

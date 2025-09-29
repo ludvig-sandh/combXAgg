@@ -48,6 +48,13 @@ class alignas(BYTES_IN_CACHE_LINE) node_t {
         val = val;
         next = nullptr;
     }
+
+    node_t()
+    {
+        key = 0;
+        val = 0;
+        next = nullptr;
+    }
     // PAD
 };
 #define nodeptr node_t<K, V> *
@@ -216,9 +223,9 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
           const V _NO_VALUE, unsigned int id)
         : main_top(NULL), recmgr (new RecMgr(_num_threads)) {
 
-        const int tid = 0;
-        initThread(tid);
-        recmgr->endOp(tid);
+        // const int tid = 0;
+        // initThread(tid);
+        // recmgr->endOp(tid);
 
         MAX_AGGREGATOR_THREADS = ceil(float(_num_threads) / NUMBER_AGGREGATORS);
         for (int i = 0; i < NUMBER_AGGREGATORS; i++) {
@@ -238,14 +245,16 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         recmgr->printStatus();
 
         nodeptr curr = main_top.load(std::memory_order_relaxed);
+        int cntr = 0;
         while (curr) {
             nodeptr next = curr->next.load(std::memory_order_relaxed);
             delete curr;
             curr = next;
+            ++cntr;
         }
         main_top.store(nullptr, std::memory_order_relaxed);
 
-        COUTATOMIC("maintop=" << main_top); 
+        COUTATOMIC("maintop=" << main_top<<"cntr="<<cntr<<std::endl); 
 
         
         for (int i = 0; i < NUMBER_AGGREGATORS; i++) {
@@ -268,7 +277,11 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         bool amIFreezer = false;
 
         Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
-        nodeptr myNode = new node_t<K, V>(0, value);
+
+        nodeptr myNode = recmgr->template allocate<node_t<K, V>>(tid);
+        myNode->next = 0;
+        myNode->val = value;
+        // nodeptr myNode = new node_t<K, V>(0, value);
         while (true) {
             amICombiner = false;
             amIFreezer = false;
@@ -484,6 +497,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
     void initThread(const int tid) {
 
     newBatchPtr.store(CreateNewBatch(), std::memory_order_relaxed);
+    // COUTATOMICTID("init bptr: " << newBatchPtr.load() << std::endl);
 
     if (init[tid]) return;
     else init[tid] = !init[tid];
@@ -505,12 +519,15 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
 
     void deinitThread(const int tid) {
         Batch<K, V> *bptr = newBatchPtr.load();
+        // COUTATOMICTID("deinit bptr: " << bptr << std::endl);
         delete bptr; // FIXME: can other threads be still accessing this batch? I think yes.
         newBatchPtr.store(nullptr);
 
         if (!init[tid]) return;
         else init[tid] = !init[tid];
         recmgr->deinitThread(tid);
+        // COUTATOMICTID("stack deinitThread: " << std::endl);
+
     }
 };
 

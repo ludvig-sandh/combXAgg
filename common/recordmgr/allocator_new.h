@@ -73,7 +73,8 @@ public:
 //             TIMELINE_START(tid);
 //             ++i;
 // #endif
-            deallocate(tid, ptr);
+// COUTATOMICTID("allocator_new freeing from pool=" << ptr << std::endl);            
+deallocate(tid, ptr);
 // #if !defined DEAMORTIZE_FREE_CALLS && defined TIMELINE_RECORD_EVERY_DEAMORTIZED_FREE
 //             TIMELINE_END_INMEM_Llu(tid, timeline_freeOne, i);
 // #endif

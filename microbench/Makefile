@@ -55,7 +55,7 @@ endif
 ## but it should only be used for data structures and workloads in which, on average,
 ## at most one object per data structure operation is allocated.
 ##
-debra_orig_free=1
+debra_orig_free=0
 ifeq ($(debra_orig_free), 1)
 	FLAGS += -DDEBRA_ORIGINAL_FREE
 endif

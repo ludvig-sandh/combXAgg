@@ -40,7 +40,7 @@
                 gstats_handle_stat(LONG_LONG, blip_advanceEpoch, 100000, { \
                         gstats_output_item(PRINT_TO_FILE, NONE, FULL_DATA) \
                 }) \
-                gstats_handle_stat(LONG_LONG, garbage_in_epoch, 25000, { \
+                gstats_handle_stat(LONG_LONG, garbage_in_epoch, 250000, { \
                         gstats_output_item(PRINT_RAW, COUNT, BY_INDEX) \
                   __AND gstats_output_item(PRINT_RAW, AVERAGE, BY_INDEX) \
                 })
@@ -69,7 +69,7 @@
                 gstats_handle_stat(LONG_LONG, timeline_freeOne, 99999, {}) \
                 gstats_handle_stat(LONG_LONG, timeline_rotateEpochBags, 99999, {}) \
                 gstats_handle_stat(LONG_LONG, blip_advanceEpoch, 35000, {}) \
-                gstats_handle_stat(LONG_LONG, garbage_in_epoch, 25000, {})
+                gstats_handle_stat(LONG_LONG, garbage_in_epoch, 250000, {})
 #   endif
 
     // define a variable for each stat above
