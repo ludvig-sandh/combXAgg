@@ -55,6 +55,7 @@ class ThreadLocalAllocator {
         : prealloc_size_(0), start_(0), end_(0), current_(0) {}
 
     _always_inline void Init(size_t prealloc_size, bool touch_memory);
+    _always_inline void DeInit();
     _always_inline void* Calloc(size_t num, size_t size);
     _always_inline void* CallocAligned(size_t num, size_t size,
                                        size_t alignment);
@@ -108,6 +109,17 @@ void ThreadLocalAllocator::Init(size_t prealloc_pages, bool touch_memory) {
             reinterpret_cast<intptr_t*>(start_)[i] = 0;
         }
     }
+
+    COUTATOMIC("ThreadLocalAllocator::Init() start_=" << start_<<std::endl);
+}
+
+void ThreadLocalAllocator::DeInit() {
+    // assert(0);
+    if (start_)
+    {
+        COUTATOMIC("ThreadLocalAllocator::DeInit()" << start_<<std::endl);
+        free(reinterpret_cast<void*>(start_));
+    }
 }
 
 void* ThreadLocalAllocator::Malloc(size_t size) {
@@ -145,6 +157,12 @@ void* ThreadLocalAllocator::MallocAligned(size_t size, size_t alignment) {
     start += alignment - (start % alignment);
     assert((start % alignment) == 0);
     return reinterpret_cast<void*>(start);
+
+    // void* mem;
+    // if (posix_memalign(&mem, alignment, size) != 0) {
+    //     return nullptr;
+    // }
+    // return mem;
 }
 
 void* ThreadLocalAllocator::Calloc(size_t size, size_t num) {

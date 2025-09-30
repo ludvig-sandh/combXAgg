@@ -21,7 +21,7 @@ ifneq ($(use_asan), 0)
 	LDFLAGS += -fsanitize=address -static-libasan
 endif
 
-use_asserts=0
+use_asserts=1
 ifeq ($(use_asserts), 0)
 	FLAGS += -DNDEBUG
 endif
@@ -40,7 +40,7 @@ no_optimize=0
 ifeq ($(no_optimize), 1)
 	FLAGS += -O0 -fno-inline-functions -fno-inline -fpermissive
 else
-	FLAGS += -O3 -fpermissive
+	FLAGS += -O3 -fpermissive -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc
 endif
 
 # FIXME: Dangerous fpermissive flag

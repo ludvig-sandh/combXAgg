@@ -47,11 +47,20 @@ class Stack_WRAP {
         pthread_barrier_init(&barrier, NULL, num_threads);
     }
 
-    ~Stack_WRAP() {}
+    ~Stack_WRAP() {
+        // delete ts_;
+        COUTATOMIC("DESTROY STACK" << std::endl);
+        scal::ThreadLocalAllocator::Get().DeInit();
+        pthread_barrier_destroy(&barrier);
+        // scal::ThreadLocalAllocator::GlobalDestroyAll();
+        delete ts_;
+    }
 
     void initThread(const int tid) {
         VERBOSE COUTATOMIC("begin initThread" << std::endl);
         // const size_t tlsize = scal::HumanSizeToPages("m\n", 10);
+        // COUTATOMIC("ThreadLocalAllocator& " <<scal::ThreadLocalAllocator::Get() << std::endl);
+
         scal::ThreadLocalAllocator::Get().Init(1 * 1024 /* 10mb */, true);
         // COUTATOMIC(" NUM THREADS " << _num_threads << "\n");
         scal::ThreadContext::prepare(_num_threads, tid);
@@ -60,6 +69,16 @@ class Stack_WRAP {
         ts_->push(value, tid);
         pthread_barrier_wait(&barrier);
         VERBOSE COUTATOMIC("end initThread" << std::endl);
+    }
+
+    void deinitThread(const int tid) {
+        COUTATOMIC("begin deinitThread!!!!!!!!!!!!!!!!!!" << std::endl);
+        // assert(0);
+        scal::ThreadLocalAllocator::Get().DeInit();
+
+        // COUTATOMIC("ThreadLocalAllocator& " <<scal::ThreadLocalAllocator::Get() << std::endl);
+        COUTATOMIC("!!!!!!!!!!!!!!end deinitThread" << std::endl);
+
     }
 
     V peek(const int &tid) {
