@@ -20,6 +20,8 @@ int MAX_AGGREGATOR_THREADS;
 
 #include <immintrin.h>
 
+#include "concprimitives.h"
+
 #include "./util/aggregatingFunnelCounter.hpp"
 #include "define_global_statistics.h"
 #include "pool.h"
@@ -44,7 +46,8 @@ class alignas(BYTES_IN_CACHE_LINE) node_t {
 
 template <typename K, typename V>
 struct alignas(BYTES_IN_CACHE_LINE) Batch {
-    std::atomic<nodeptr> *eliminationArray;
+    // std::atomic<nodeptr> *eliminationArray;
+    paddedAtomic<nodeptr> *eliminationArray;
     std::atomic<int> pushCounter;
     std::atomic<int> popCounter;
     std::atomic<int> finalPushCount;
@@ -85,12 +88,22 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         newBatch->isBatchApplied.store(false, std::memory_order_seq_cst);
         newBatch->subStackBot.store(NULL, std::memory_order_seq_cst);
         newBatch->subStackTop.store(NULL, std::memory_order_seq_cst);
-        newBatch->eliminationArray = (std::atomic<nodeptr> *)malloc(
-            sizeof(std::atomic<nodeptr>) * MAX_AGGREGATOR_THREADS);
-        for (size_t i = 0; i < MAX_AGGREGATOR_THREADS; i++) {
-            memset(newBatch->eliminationArray, 0,
-                   sizeof(nodeptr) * MAX_AGGREGATOR_THREADS);
+        // newBatch->eliminationArray = (std::atomic<nodeptr> *)malloc(
+        //     sizeof(std::atomic<nodeptr>) * MAX_AGGREGATOR_THREADS);
+        // for (size_t i = 0; i < MAX_AGGREGATOR_THREADS; i++) {
+        //     memset(newBatch->eliminationArray, 0,
+        //            sizeof(nodeptr) * MAX_AGGREGATOR_THREADS);
+        // }
+        newBatch->eliminationArray = (paddedAtomic<nodeptr> *)malloc(
+            sizeof(paddedAtomic<nodeptr>) * MAX_AGGREGATOR_THREADS);
+        for (size_t i = 0; i < MAX_AGGREGATOR_THREADS; i++)
+        {
+            // newBatch->eliminationArray[i].store(NULL, std::memory_order_relaxed);
+            //set each slots nodeptr to null
+            newBatch->eliminationArray[i].ui = NULL;
+
         }
+                   
         return newBatch;
     }
 
@@ -117,18 +130,22 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         }
     }
     void CreatePushSubstack(struct Batch<K, V> *batch, int leaderIndex) {
-        batch->subStackBot.store(batch->eliminationArray[leaderIndex].load());
+        // batch->subStackBot.store(batch->eliminationArray[leaderIndex].load());
+        batch->subStackBot.store(batch->eliminationArray[leaderIndex].ui);
+
         struct node_t<K, V> *tempTop = batch->subStackBot.load();
         int i = 1;
         while (leaderIndex + i < batch->finalPushCount) {
-            while (!batch->eliminationArray[leaderIndex + i]
-                        .load())  // Wait for Push to write value.
+            // while (!batch->eliminationArray[leaderIndex + i].load())  // Wait for Push to write value.
+            while (!batch->eliminationArray[leaderIndex + i].ui)  // Wait for Push to write value.
             {
 #ifdef USE_BACKOFF
                 // _mm_pause();
 #endif
             }
-            nodeptr tempNode = batch->eliminationArray[leaderIndex + i].load();
+            // nodeptr tempNode = batch->eliminationArray[leaderIndex + i].load();
+            nodeptr tempNode = batch->eliminationArray[leaderIndex + i].ui;
+
             tempNode->next = tempTop;
             tempTop = tempNode;
             i++;
@@ -186,7 +203,9 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
                 myBatch->finalPushCount.load())  // I wasn't included.
                 continue;                        // Try to join a new batch
 
-            myBatch->eliminationArray[pushIndex].store(myNode);
+            // myBatch->eliminationArray[pushIndex].store(myNode);
+            myBatch->eliminationArray[pushIndex].ui = myNode;
+
             if (pushIndex < myBatch->finalPopCount.load())  // Eliminated.
             {
                 // check if everyone got eliminated then freezer must retire
@@ -280,12 +299,11 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
 
             if (popIndex < myBatch->finalPushCount.load())  // Eliminated.
             {
-                while (!myBatch->eliminationArray[popIndex]
-                            .load())  // Wait for Push
-                                      // to write value.
+                while (!myBatch->eliminationArray[popIndex].ui)  // Wait for Push to write value.
                 {
                 }
-                nodeptr my_ptr = myBatch->eliminationArray[popIndex].load();
+                // nodeptr my_ptr = myBatch->eliminationArray[popIndex].load();
+                nodeptr my_ptr = myBatch->eliminationArray[popIndex].ui;
 
                 V returnValue = my_ptr->val;
             
