@@ -23,7 +23,7 @@ int MAX_AGGREGATOR_THREADS;
 #define CHOOSE_AGGREGATOR(tId) (aggregator[(tId) / MAX_AGGREGATOR_THREADS])
 
 #include <immintrin.h>
-
+// #include "ConcurentPrimitives.h"
 #include "./util/aggregatingFunnelCounter.hpp"
 #include "define_global_statistics.h"
 #include "pool.h"
@@ -60,9 +60,15 @@ class alignas(BYTES_IN_CACHE_LINE) node_t {
 #define nodeptr node_t<K, V> *
 
 template <typename K, typename V>
+struct node_pp {
+    nodeptr ptr;
+    PAD;
+};
+
+template <typename K, typename V>
 struct alignas(PREFETCH_SIZE_BYTES) Batch {
     // PAD
-    std::atomic<nodeptr> *eliminationArray;
+    std::atomic<node_pp<K,V>> *eliminationArray;
     PAD;
     std::atomic<int> pushCounter;
     PAD;
@@ -137,16 +143,27 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         newBatch->subStackTop.store(NULL, std::memory_order_relaxed);
         // newBatch->eliminationArray =
         //     malloc(sizeof(std::atomic<nodeptr>) * MAX_AGGREGATOR_THREADS);
-        newBatch->eliminationArray = (std::atomic<nodeptr> *)malloc(sizeof(std::atomic<nodeptr>)*MAX_AGGREGATOR_THREADS);
+        newBatch->eliminationArray = (std::atomic<node_pp<K,V>> *)malloc(
+            sizeof(std::atomic<node_pp<K,V>>) * MAX_AGGREGATOR_THREADS);
         // newBatch->next = NULL;
         for (size_t i = 0; i < MAX_AGGREGATOR_THREADS; i++) {
             // newBatch->eliminationArray[i].store(NULL,
             // std::memory_order_relaxed);
             memset(newBatch->eliminationArray, 0,
-                   sizeof(nodeptr) * MAX_AGGREGATOR_THREADS);
+                   sizeof(node_pp<K,V>) * MAX_AGGREGATOR_THREADS);
         }
         return newBatch;
     }
+    inline uint64_t rdtsc() {
+  unsigned int hi, lo;
+  __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+  return ((uint64_t) lo) | (((uint64_t) hi) << 32);
+}
+
+inline uint64_t hwrand() {
+  return 100 + (rdtsc() % 200);
+}
+
 
     void FreezeBatch(struct Aggregator<K, V> *aggregator,
                      std::atomic<struct Batch<K, V> *> batch, const int &tid) {
@@ -155,9 +172,10 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         // newBatchPtr.load()->bprev = batch.load();
         // batch.load()->bnext = newBatchPtr;
         volatile int dummy = 0;
-        for (int i = 0; i < 600; i++) {
-            dummy++;
-        }
+        uint64_t backoff = hwrand();
+            for (int i = 0; i < backoff; i++) {
+                dummy++;
+            }
         batch.load(std::memory_order_acquire)
             ->finalPushCount.store(
                 batch.load(std::memory_order_acquire)
@@ -194,16 +212,16 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
     }
     void CreatePushSubstackAndPush(struct Batch<K, V> *batch, int leaderIndex) {
         struct node_t<K, V> *tempTop =
-            batch->eliminationArray[leaderIndex].load();
+            batch->eliminationArray[leaderIndex].ptr.load();
         struct node_t<K, V> *tempBot = tempTop;
         int i = 1;
         while (i < (batch->finalPushCount.load(std::memory_order_acquire) -
                     batch->finalPopCount.load(std::memory_order_acquire))) {
-            while (!batch->eliminationArray[leaderIndex + i]
+            while (!batch->eliminationArray[leaderIndex + i].ptr
                         .load())  // Wait for Push to write value.
             {
             }
-            nodeptr tempNode = batch->eliminationArray[leaderIndex + i].load(
+            nodeptr tempNode = batch->eliminationArray[leaderIndex + i].ptr.load(
                 std::memory_order_relaxed);
             tempNode->next = tempTop;
             tempTop = tempNode;
@@ -287,8 +305,8 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
             amIFreezer = false;
             struct Batch<K, V> *myBatch = myAggregator->batch;
             int pushIndex = myBatch->pushCounter.fetch_add(
-                1, tid);  // Opt. Check software F&A speed up? //FIXMEURGENT: fetch ad shoould just take 1 int param other should be memoryorder.
-            myBatch->eliminationArray[pushIndex].store(myNode);
+                1);  // Opt. Check software F&A speed up? //FIXMEURGENT: fetch ad shoould just take 1 int param other should be memoryorder.
+            myBatch->eliminationArray[pushIndex].ptr.store(myNode);
 
             if (pushIndex == 0 &&
                 !myBatch->hasLeader.test_and_set())  // Should be test and set.
@@ -400,7 +418,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
             amIFreezer = false;
             
             struct Batch<K, V> *myBatch = myAggregator->batch;
-            int popIndex = myBatch->popCounter.fetch_add(1, tid);
+            int popIndex = myBatch->popCounter.fetch_add(1);
             if (popIndex == 0 && !myBatch->hasLeader.test_and_set()) {
                 amIFreezer = true;
                 FreezeBatch(myAggregator, myBatch, tid);
@@ -419,14 +437,14 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
             if (popIndex < myBatch->finalPushCount.load(
                                std::memory_order_acquire))  // Eliminated.
             {
-                while (!myBatch->eliminationArray[popIndex]
+                while (!myBatch->eliminationArray[popIndex].ptr
                             .load())  // Wait for Push
                                       // to write value.
                 {
                 }
 
                 nodeptr my_ptr =
-                    myBatch->eliminationArray[popIndex].load();
+                    myBatch->eliminationArray[popIndex].ptr.load();
                 V returnValue = my_ptr->val;
 
             
