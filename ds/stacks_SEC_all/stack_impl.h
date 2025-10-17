@@ -247,7 +247,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
                 !myBatch->hasLeader.test_and_set()) {
                 FreezeBatch(myAggregator, myBatch, tid);
             } else {
-                while (myBatch == myAggregator->batch) finished.{
+                while (myBatch == myAggregator->batch){
                     }
             }
 
