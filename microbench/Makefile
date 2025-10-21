@@ -16,7 +16,7 @@ ifneq ($(has_libnuma), 0)
 	LDFLAGS += -lnuma
 endif
 
-use_asan=1
+use_asan=0
 ifneq ($(use_asan), 0)
 	LDFLAGS += -fsanitize=address -static-libasan
 endif
@@ -84,7 +84,7 @@ endif
 FLAGS += -DMAX_THREADS_POW2=512
 FLAGS += -DCPU_FREQ_GHZ=2.1 #$(shell ./experiments/get_cpu_ghz.sh)
 FLAGS += -DMEMORY_STATS=if\(1\) -DMEMORY_STATS2=if\(0\)
-FLAGS += -std=c++17 -mcx16 -gdwarf
+FLAGS += -std=c++20 -g -mcx16 -gdwarf
 FLAGS += -fno-omit-frame-pointer
 FLAGS += -DUSE_GSTATS
 FLAGS += -DGSTATS_HANDLE_STATS

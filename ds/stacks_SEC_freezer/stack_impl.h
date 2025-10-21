@@ -34,6 +34,18 @@ static __thread bool init = false;
 // #define USE_POOLS
 // #define USE_BACKOFF // doesn't help us.
 
+
+inline void cpu_relax_yield(int &spin) {
+    if (spin <= 50) {
+        _mm_pause();
+    } else if (spin < 200) {
+        for (volatile int i = 0; i < (spin-50)*8; ++i) _mm_pause();
+    } else {
+        std::this_thread::yield();
+    }
+    ++spin;
+}
+
 template <typename K, typename V>
 class alignas(BYTES_IN_CACHE_LINE) node_t {
    public:
@@ -288,9 +300,11 @@ bool push(const int &tid, const V &value) {
             amIFreezer = true;
             FreezeBatch(myAggregator, myBatch, tid);
         } else {
+            int spin = 0;
             while (myBatch ==
                    myAggregator->batch)  // Spin until freezing has finished.
             {
+                cpu_relax_yield(spin);
             }
         }
 
@@ -325,9 +339,11 @@ bool push(const int &tid, const V &value) {
             }
             else 
             {
+                int spin = 0;
                 while (myBatch->isBatchApplied.load() ==
                        false)  // Wait for leader to apply to main.
                 {
+                    cpu_relax_yield(spin);
                     // COUTATOMICTID("isBatchApplied "<<std::endl);
                 }
             }
@@ -400,7 +416,9 @@ bool push(const int &tid, const V &value) {
                 amIFreezer = true;
                 FreezeBatch(myAggregator, myBatch, tid);
             } else {
+                int spin = 0;
                 while (myBatch == myAggregator->batch) {
+                    cpu_relax_yield(spin);
                 }
             }
 
@@ -450,11 +468,10 @@ bool push(const int &tid, const V &value) {
             }
             else
             {
+                int spin = 0;
                 while (myBatch->isBatchApplied.load(
                            std::memory_order_acquire) == false) {
-#ifdef USE_BACKOFF
-                    // _mm_pause();
-#endif
+                    cpu_relax_yield(spin);
                 }
             }
             // return GetRetValue(

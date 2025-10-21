@@ -34,6 +34,19 @@ static __thread bool init = false;
 // #define USE_POOLS
 // #define USE_BACKOFF // doesn't help us.
 
+
+inline void cpu_relax_yield(int &spin) {
+    if (spin <= 50) {
+        _mm_pause();
+    } else if (spin < 100) {
+        for (volatile int i = 0; i < (spin-50)*8; ++i) _mm_pause();
+    } else {
+        std::this_thread::yield();
+    }
+    ++spin;
+}
+
+
 template <typename K, typename V>
 class alignas(BYTES_IN_CACHE_LINE) node_t {
    public:
@@ -104,7 +117,8 @@ struct alignas(PREFETCH_SIZE_BYTES) Aggregator {
 template <typename K, typename V, class RecMgr>
 class alignas(BYTES_IN_CACHE_LINE) Stack {
    private:
-    static inline thread_local std::atomic<Batch<K, V> *> newBatchPtr{nullptr};
+    PAD;
+   static inline thread_local std::atomic<Batch<K, V> *> newBatchPtr{nullptr};
     PAD;
     std::atomic<nodeptr> main_top;
     PAD;
@@ -115,7 +129,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
     int init[MAX_THREADS_POW2] = {0,};
     PAD;
 
-
+__attribute__((noinline))
     struct Batch<K, V> *CreateNewBatch() {
         struct Batch<K, V> *newBatch;
 #ifdef USE_POOLS
@@ -135,15 +149,21 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         newBatch->hasLeader.clear(std::memory_order_relaxed);
         newBatch->isBatchApplied.store(false, std::memory_order_relaxed);
         newBatch->subStackTop.store(NULL, std::memory_order_relaxed);
-        newBatch->eliminationArray =
-            malloc(sizeof(std::atomic<nodeptr>) * MAX_AGGREGATOR_THREADS);
-        // newBatch->next = NULL;
-        for (size_t i = 0; i < MAX_AGGREGATOR_THREADS; i++) {
-            // newBatch->eliminationArray[i].store(NULL,
-            // std::memory_order_relaxed);
-            memset(newBatch->eliminationArray, 0,
-                   sizeof(nodeptr) * MAX_AGGREGATOR_THREADS);
+        // newBatch->eliminationArray =
+        //     malloc(sizeof(std::atomic<nodeptr>) * MAX_AGGREGATOR_THREADS);
+        // // newBatch->next = NULL;
+        // for (size_t i = 0; i < MAX_AGGREGATOR_THREADS; i++) {
+        //     // newBatch->eliminationArray[i].store(NULL,
+        //     // std::memory_order_relaxed);
+        //     memset(newBatch->eliminationArray, 0,
+        //            sizeof(nodeptr) * MAX_AGGREGATOR_THREADS);
+        // }
+
+        newBatch->eliminationArray = (std::atomic<nodeptr>*) operator new[] (sizeof(std::atomic<nodeptr>) * MAX_AGGREGATOR_THREADS);
+        for (int i = 0; i < MAX_AGGREGATOR_THREADS; ++i) {
+            new (&newBatch->eliminationArray[i]) std::atomic<nodeptr>(nullptr); // placement new
         }
+
         return newBatch;
     }
     inline uint64_t rdtsc() {
@@ -154,6 +174,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
 
 inline uint64_t hwrand() { return 200 + (rdtsc() % 100); }
 
+__attribute__((noinline))
 void FreezeBatch(struct Aggregator<K, V> *aggregator,
                  std::atomic<struct Batch<K, V> *> batch, const int &tid) {
     // std::atomic<struct Batch<K, V> *> newBatch;
@@ -197,7 +218,7 @@ void FreezeBatch(struct Aggregator<K, V> *aggregator,
 
     newBatchPtr.store(CreateNewBatch(), std::memory_order_relaxed);
 }
-    void CreatePushSubstackAndPush(struct Batch<K, V> *batch, int leaderIndex) {
+    __attribute__((noinline)) void CreatePushSubstackAndPush(struct Batch<K, V> *batch, int leaderIndex) {
         struct node_t<K, V> *tempTop =
             batch->eliminationArray[leaderIndex].load();
         struct node_t<K, V> *tempBot = tempTop;
@@ -301,10 +322,12 @@ void FreezeBatch(struct Aggregator<K, V> *aggregator,
                 amIFreezer = true;
                 FreezeBatch(myAggregator, myBatch, tid);
             } else {
+                int spin = 0;
                 while (
                     myBatch ==
                     myAggregator->batch)  // Spin until freezing has finished.
                 {
+                    // cpu_relax_yield(spin);
                 }
             }
 
@@ -341,10 +364,12 @@ void FreezeBatch(struct Aggregator<K, V> *aggregator,
             }
             else 
             {
+                int spin = 0;
                 while (myBatch->isBatchApplied.load() ==
                        false)  // Wait for leader to apply to main.
                 {
                     // COUTATOMICTID("isBatchApplied "<<std::endl);
+                    // cpu_relax_yield(spin);
                 }
             }
 
@@ -412,7 +437,10 @@ void FreezeBatch(struct Aggregator<K, V> *aggregator,
             }
             else 
             {
+                int spin = 0;
                 while (myBatch == myAggregator->batch) {
+                    // Spin until freezing has finished.
+                    // cpu_relax_yield(spin);
                 }
             }
 
@@ -462,11 +490,10 @@ void FreezeBatch(struct Aggregator<K, V> *aggregator,
             }
             else
             {
+                int spin = 0;
                 while (myBatch->isBatchApplied.load(
                            std::memory_order_acquire) == false) {
-#ifdef USE_BACKOFF
-                    // _mm_pause();
-#endif
+                    // cpu_relax_yield(spin);
                 }
             }
             // return GetRetValue(

@@ -255,7 +255,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
         nodeptr myNode = new node_t<K, V>(0, value);
 
-        int pushIndex = myAggregator->pushCounter.fetch_add(1, tid);
+        int pushIndex = myAggregator->pushCounter.fetch_add(1);
         struct Batch<K, V> *mayBeMyBatch = myAggregator->batch;
         struct Batch<K, V> *myBatch = nullptr;
         int relativepushIndex = -1;
@@ -401,7 +401,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
 
         Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
 
-        int popIndex = myAggregator->popCounter.fetch_add(1, tid);
+        int popIndex = myAggregator->popCounter.fetch_add(1);
         struct Batch<K, V> *mayBeMyBatch = myAggregator->batch;
         struct Batch<K, V> *myBatch = nullptr;
         int relativepopIndex = -1;
