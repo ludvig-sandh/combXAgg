@@ -1,8 +1,3 @@
-// #include <ccstack.h>
-#include <pool.h>
-
-
-
 
 
 /// @file ccstack.h
@@ -16,10 +11,10 @@
 /// @copyright Copyright (c) 2021
 #ifndef _CCSTACK_H_
 #define _CCSTACK_H_
-
-#include <config.h>
-#include <queue-stack.h>
 #include <ccsynch.h>
+#include <config.h>
+#include <pool.h>
+#include <queue-stack.h>
 
 /// @brief CCStackStruct stores the state of an instance of the CC-Stack concurrent stack implementation.
 /// CCStackStruct should be initialized using the CCStackStructInit function.

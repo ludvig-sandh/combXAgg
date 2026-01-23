@@ -172,7 +172,7 @@ __attribute__((noinline))
   return ((uint64_t) lo) | (((uint64_t) hi) << 32);
 }
 
-inline uint64_t hwrand() { return 200 + (rdtsc() % 100); }
+inline uint64_t hwrand() { return 300 + (rdtsc() % 200); }
 
 __attribute__((noinline))
 void FreezeBatch(struct Aggregator<K, V> *aggregator,

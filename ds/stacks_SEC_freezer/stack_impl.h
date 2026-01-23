@@ -31,6 +31,16 @@ int MAX_AGGREGATOR_THREADS;
 static __thread SynchPoolStruct pool_node CACHE_ALIGN;
 static __thread SynchPoolStruct pool_batch CACHE_ALIGN;
 static __thread bool init = false;
+static __thread size_t pushbackoff = 0;
+static __thread size_t pushspin = 0;
+static __thread size_t popbackoff = 0;
+static __thread size_t popspin = 0;
+static __thread size_t pushop = 0;
+static __thread size_t popop = 0;
+std::atomic<long long int> total_ops = 0;
+std::atomic<long long int> total_backoff = 0;
+std::atomic<long long int> total_spin = 0;
+
 // #define USE_POOLS
 // #define USE_BACKOFF // doesn't help us.
 
@@ -91,8 +101,7 @@ struct alignas(PREFETCH_SIZE_BYTES) Batch {
     // std::atomic<struct Batch<K, V>*> bnext;
     ~Batch() {
         // delete[] eliminationArray;
-        if (eliminationArray)
-            free(eliminationArray);
+        if (eliminationArray) free(eliminationArray);
     }
 };
 
@@ -115,11 +124,12 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
     PAD;
     Aggregator<K, V> aggregator[NUMBER_AGGREGATORS];
     PAD;
-    RecMgr * const recmgr;
+    RecMgr *const recmgr;
     PAD;
-    int init[MAX_THREADS_POW2] = {0,};
+    int init[MAX_THREADS_POW2] = {
+        0,
+    };
     PAD;
-
 
     struct Batch<K, V> *CreateNewBatch() {
         struct Batch<K, V> *newBatch;
@@ -132,7 +142,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         // memset(newBatch, 0, sizeof(Batch<K, V>));
 
         newBatch->popCounter.store(0, std::memory_order_relaxed);
-        newBatch->pushCounter.store(0,std::memory_order_relaxed);
+        newBatch->pushCounter.store(0, std::memory_order_relaxed);
 
         newBatch->finalPopCount.store(0, std::memory_order_relaxed);
         newBatch->finalPushCount.store(0, std::memory_order_relaxed);
@@ -142,7 +152,8 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         newBatch->subStackTop.store(NULL, std::memory_order_relaxed);
         // newBatch->eliminationArray =
         //     malloc(sizeof(std::atomic<nodeptr>) * MAX_AGGREGATOR_THREADS);
-        newBatch->eliminationArray = (std::atomic<nodeptr> *)malloc(sizeof(std::atomic<nodeptr>)*MAX_AGGREGATOR_THREADS);
+        newBatch->eliminationArray = (std::atomic<nodeptr> *)malloc(
+            sizeof(std::atomic<nodeptr>) * MAX_AGGREGATOR_THREADS);
         // newBatch->next = NULL;
         for (size_t i = 0; i < MAX_AGGREGATOR_THREADS; i++) {
             // newBatch->eliminationArray[i].store(NULL,
@@ -169,7 +180,6 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
                     ->popCounter.load(std::memory_order_acquire),
                 std::memory_order_release);
 
-
         // Unlocks the waiting threads
         aggregator->batch.store(newBatchPtr);
 
@@ -181,7 +191,8 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         // long long num_noneliminated = (numpush - numpop) < 0
         //                                   ? (-1) * (numpush - numpop)
         //                                   : (numpush - numpop);
-        // long long num_eliminated = (numpush > numpop) ? 2 * numpop : 2 * numpush;
+        // long long num_eliminated = (numpush > numpop) ? 2 * numpop : 2 *
+        // numpush;
 
         // long long total_size = numpush + numpop;
 
@@ -220,27 +231,24 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
    public:
     Stack(const int _num_threads, const int _min_key, const int _max_key,
           const V _NO_VALUE, unsigned int id)
-        : main_top(NULL), recmgr (new RecMgr(_num_threads)) {
-
+        : main_top(NULL), recmgr(new RecMgr(_num_threads)) {
         const int tid = 0;
         initThread(tid);
         recmgr->endOp(tid);
 
         MAX_AGGREGATOR_THREADS = ceil(float(_num_threads) / NUMBER_AGGREGATORS);
         for (int i = 0; i < NUMBER_AGGREGATORS; i++) {
-            
-            // aj commented the following. Not sure what was its purpose???? This is a leak.
-            // aggregator[i].batch = CreateNewBatch();
+            // aj commented the following. Not sure what was its purpose????
+            // This is a leak. aggregator[i].batch = CreateNewBatch();
             // aggregator[i].batch.load()->finalPushCount = -1;
             // aggregator[i].batch.load()->finalPopCount = -1;
 
             struct Batch<K, V> *batch1 = CreateNewBatch();
 
-
             aggregator[i].batch = batch1;
         }
     }
-    ~Stack() { 
+    ~Stack() {
         recmgr->printStatus();
 
         nodeptr curr = main_top.load(std::memory_order_relaxed);
@@ -251,34 +259,36 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
         }
         main_top.store(nullptr, std::memory_order_relaxed);
 
-        COUTATOMIC("maintop=" << main_top); 
+        COUTATOMIC("maintop=" << main_top);
 
-        
         for (int i = 0; i < NUMBER_AGGREGATORS; i++) {
             struct Batch<K, V> *batch = aggregator[i].batch.load();
             if (batch) delete batch;
         }
-        
-        
+
         delete newBatchPtr;
         delete recmgr;
-        COUTATOMIC("combxagg node size=" << sizeof(node_t<K, V>)); 
+        COUTATOMIC("combxagg node size=" << sizeof(node_t<K, V>));
+
+        COUTATOMIC(" Total operations = "
+                   << total_ops << " Total backoff loops = " << total_backoff
+                   << " Total spin loops = " << total_spin);
     }
 
     V peek(const int &tid) { return main_top ? main_top.load() : V(); }
 
     inline uint64_t rdtsc() {
-  unsigned int hi, lo;
-  __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
-  return ((uint64_t) lo) | (((uint64_t) hi) << 32);
-}
+        unsigned int hi, lo;
+        __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+        return ((uint64_t)lo) | (((uint64_t)hi) << 32);
+    }
 
-inline uint64_t hwrand() { return 200 + (rdtsc() % 100); }
-bool push(const int &tid, const V &value) {
-    recmgr->startOp(tid);
+    inline uint64_t hwrand() { return 300 + (rdtsc() % 100); }
 
-    bool amICombiner = false;
-    bool amIFreezer = false;
+    bool push(const int &tid, const V &value) {
+        recmgr->startOp(tid);
+        bool amICombiner = false;
+        bool amIFreezer = false;
 
     Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
     nodeptr myNode = new node_t<K, V>(0, value);
@@ -300,46 +310,43 @@ bool push(const int &tid, const V &value) {
             amIFreezer = true;
             FreezeBatch(myAggregator, myBatch, tid);
         } else {
-            int spin = 0;
             while (myBatch ==
                    myAggregator->batch)  // Spin until freezing has finished.
             {
-                cpu_relax_yield(spin);
             }
         }
 
-        if (pushIndex >= myBatch->finalPushCount.load())  // I wasn't included.
-        {
-            continue;  // retry in next batch which has to be your apt
-                       // batch.
-        }
+            if (pushIndex >=
+                myBatch->finalPushCount.load())  // I wasn't included.
+            {
+                continue;  // retry in next batch which has to be your apt
+                           // batch.
+            }
 
-        if (pushIndex < myBatch->finalPopCount.load(
-                            std::memory_order_acquire))  // Eliminated.
-        {
-            // COUTATOMICTID("dummy eliminated " << value << std::endl);
-            if (amIFreezer &&
-                (myBatch->finalPushCount.load(std::memory_order_acquire) ==
-                 myBatch->finalPopCount.load(std::memory_order_acquire))) {
-                    #ifdef BATCH_RETIRE
+            if (pushIndex < myBatch->finalPopCount.load(
+                                std::memory_order_acquire))  // Eliminated.
+            {
+                // COUTATOMICTID("dummy eliminated " << value << std::endl);
+                if (amIFreezer &&
+                    (myBatch->finalPushCount.load(std::memory_order_acquire) ==
+                     myBatch->finalPopCount.load(std::memory_order_acquire))) {
+#ifdef BATCH_RETIRE
                     recmgr->retire(tid, myBatch);
-                    #endif
+#endif
                 }
-                
+
                 recmgr->endOp(tid);
                 return true;
             }
 
             if (pushIndex ==
-                myBatch->finalPopCount.load(std::memory_order_acquire)) 
-            {
+                myBatch->finalPopCount.load(std::memory_order_acquire)) {
                 CreatePushSubstackAndPush(myBatch, pushIndex);
                 myBatch->isBatchApplied.store(true, std::memory_order_release);
                 amICombiner = true;
             }
             else 
             {
-                int spin = 0;
                 while (myBatch->isBatchApplied.load() ==
                        false)  // Wait for leader to apply to main.
                 {
@@ -348,10 +355,9 @@ bool push(const int &tid, const V &value) {
                 }
             }
 
-            #ifdef BATCH_RETIRE
-            if (amICombiner)
-                recmgr->retire(tid, myBatch);
-            #endif
+#ifdef BATCH_RETIRE
+            if (amICombiner) recmgr->retire(tid, myBatch);
+#endif
 
             recmgr->endOp(tid);
 
@@ -385,7 +391,7 @@ bool push(const int &tid, const V &value) {
                 return V();
             }
         }
-        
+
         V res = temp->val;
         recmgr->retire(tid, temp);
         return res;
@@ -393,21 +399,21 @@ bool push(const int &tid, const V &value) {
     }
 
     bool pop(const int &tid) {
-        
         recmgr->startOp(tid);
         bool amICombiner = false;
         bool amIFreezer = false;
-
         Aggregator<K, V> *myAggregator = &CHOOSE_AGGREGATOR(tid);
         bool success = false;
         while (true) {
+            popop++;
             amICombiner = false;
             amIFreezer = false;
-            
+
             struct Batch<K, V> *myBatch = myAggregator->batch;
             int popIndex = myBatch->popCounter.fetch_add(1);
             volatile int dummy = 0;
             uint64_t backoff = hwrand();
+            popbackoff += backoff;
             for (int i = 0; i < backoff; i++) {
                 dummy++;
             }
@@ -418,7 +424,6 @@ bool push(const int &tid, const V &value) {
             } else {
                 int spin = 0;
                 while (myBatch == myAggregator->batch) {
-                    cpu_relax_yield(spin);
                 }
             }
 
@@ -436,23 +441,20 @@ bool push(const int &tid, const V &value) {
                 {
                 }
 
-                nodeptr my_ptr =
-                    myBatch->eliminationArray[popIndex].load();
+                nodeptr my_ptr = myBatch->eliminationArray[popIndex].load();
                 V returnValue = my_ptr->val;
 
-            
-                if (amIFreezer && (myBatch->finalPushCount.load(std::memory_order_acquire) ==
-                    myBatch->finalPopCount.load(std::memory_order_acquire)) //FIXME: can be relaxed
-                ) 
-                {
-                    #ifdef BATCH_RETIRE
+                if (amIFreezer &&
+                    (myBatch->finalPushCount.load(std::memory_order_acquire) ==
+                     myBatch->finalPopCount.load(
+                         std::memory_order_acquire))  // FIXME: can be relaxed
+                ) {
+#ifdef BATCH_RETIRE
                     recmgr->retire(tid, myBatch);
-                    #endif
+#endif
                 }
-            
-            
-                recmgr->endOp(tid);
 
+                recmgr->endOp(tid);
 
                 return returnValue;
             }
@@ -468,7 +470,6 @@ bool push(const int &tid, const V &value) {
             }
             else
             {
-                int spin = 0;
                 while (myBatch->isBatchApplied.load(
                            std::memory_order_acquire) == false) {
                     cpu_relax_yield(spin);
@@ -480,38 +481,32 @@ bool push(const int &tid, const V &value) {
             //     myBatch->subStackTop.load(std::memory_order_acquire));
 
             V res = GetRetValue(
-            popIndex -
-                myBatch->finalPushCount.load(std::memory_order_acquire),
-            myBatch->subStackTop.load(std::memory_order_acquire), tid);
+                popIndex -
+                    myBatch->finalPushCount.load(std::memory_order_acquire),
+                myBatch->subStackTop.load(std::memory_order_acquire), tid);
 
-            #ifdef BATCH_RETIRE
-            if (amICombiner)
-            {
-                //retire batch.
+#ifdef BATCH_RETIRE
+            if (amICombiner) {
+                // retire batch.
                 recmgr->retire(tid, myBatch);
-
             }
-            #endif
+#endif
             recmgr->endOp(tid);
             return res;
         }
         return true;
     }
 
-    RecMgr * debugGetRecMgr() {
-        return recmgr;
-    }
-
-
+    RecMgr *debugGetRecMgr() { return recmgr; }
 
     void initThread(const int tid) {
+        newBatchPtr.store(CreateNewBatch(), std::memory_order_relaxed);
 
-    newBatchPtr.store(CreateNewBatch(), std::memory_order_relaxed);
-
-    if (init[tid]) return;
-    else init[tid] = !init[tid];
-    recmgr->initThread(tid);
-
+        if (init[tid])
+            return;
+        else
+            init[tid] = !init[tid];
+        recmgr->initThread(tid);
 
 #ifdef USE_POOLS
         if (!init) {
@@ -524,16 +519,26 @@ bool push(const int &tid, const V &value) {
         if (0 == tid)
             COUTATOMICTID("comxagg batch size: " << sizeof(Batch<K, V>)
                                                  << std::endl);
-}
+    }
 
     void deinitThread(const int tid) {
         Batch<K, V> *bptr = newBatchPtr.load();
-        delete bptr; // FIXME: can other threads be still accessing this batch? I think yes.
+        delete bptr;  // FIXME: can other threads be still accessing this batch?
+                      // I think yes.
         newBatchPtr.store(nullptr);
 
-        if (!init[tid]) return;
-        else init[tid] = !init[tid];
+        if (!init[tid])
+            return;
+        else
+            init[tid] = !init[tid];
         recmgr->deinitThread(tid);
+
+        long long int operations = pushop + popop;
+        long long int backoff_time = pushbackoff + popbackoff;
+        long long int spin_time = pushspin + popspin;
+        total_ops.fetch_add(operations);
+        total_backoff.fetch_add(backoff_time);
+        total_spin.fetch_add(spin_time);
     }
 };
 

@@ -14,7 +14,7 @@
 // FIXME: memory leaks
 
 int MAX_AGGREGATOR_THREADS;
-#define NUMBER_AGGREGATORS 4
+#define NUMBER_AGGREGATORS 2
 
 #define CHOOSE_AGGREGATOR(tId) (aggregator[(tId) / MAX_AGGREGATOR_THREADS])
 
@@ -26,8 +26,6 @@ int MAX_AGGREGATOR_THREADS;
 #include "define_global_statistics.h"
 #include "pool.h"
 #include "record_manager.h"
-static __thread SynchPoolStruct pool_node CACHE_ALIGN;
-static __thread SynchPoolStruct pool_batch CACHE_ALIGN;
 static __thread bool init = false;
 
 template <typename K, typename V>
@@ -185,7 +183,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
             amIFreezer = false;
             struct Batch<K, V> *myBatch = myAggregator->batch;
             int pushIndex = myBatch->pushCounter.fetch_add(
-                1, tid);
+                1);
 
             if (pushIndex == 0 &&
                 !myBatch->hasLeader.test_and_set())  // Should be test and set.
@@ -281,7 +279,7 @@ class alignas(BYTES_IN_CACHE_LINE) Stack {
             amICombiner = false;
             amIFreezer = false;
             struct Batch<K, V> *myBatch = myAggregator->batch;
-            int popIndex = myBatch->popCounter.fetch_add(1, tid);
+            int popIndex = myBatch->popCounter.fetch_add(1);
             if (popIndex == 0 && !myBatch->hasLeader.test_and_set()) {
                 FreezeBatch(myAggregator, myBatch, tid);
                 amIFreezer = true;
