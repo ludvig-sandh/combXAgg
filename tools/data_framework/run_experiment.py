@@ -58,6 +58,8 @@ from _templates_html import *
 from _basic_functions import *
 from _plot_df import *
 
+
+
 ######################################################
 #### global variables
 ######################################################
@@ -756,7 +758,7 @@ def cf_andl(list):
 ## quote_text only works if there are headers
 ## column_filters only work if there are headers (even if they filter solely on the data)
 ## sep has no effect if columns are aligned
-def table_to_str(table, headers=None, aligned=False, quote_text=True, sep=' ', column_filter=cf_any, row_header_html_link='', do_pages=False):
+def table_to_str(table, headers=None, aligned=False, quote_text=True, sep=' ', column_filter=cf_any, row_header_html_link=''):
     assert(headers or column_filter == cf_any)
     assert(headers or not quote_text)
     assert(sep == ' ' or not aligned)
@@ -849,14 +851,13 @@ def table_to_str(table, headers=None, aligned=False, quote_text=True, sep=' ', c
                 ## right in the middle of rendering this table,
                 ## i'm going to create an html counterpart to the file "value_of_row_header"
                 ## so i can link that instead...
-                if do_pages:
-                    with open(get_dir_data(g) + '/' + value_of_row_header, 'r') as f:
-                        file_contents = f.read()
-                    new_file_name = value_of_row_header.replace('.txt', '.html')
-                    with open(get_dir_data(g) + '/' + new_file_name, 'w') as f:
-                        f.write(template_data_html.replace('{template_content}', file_contents))
+                with open(get_dir_data(g) + '/' + value_of_row_header, 'r') as f:
+                    file_contents = f.read()
+                new_file_name = value_of_row_header.replace('.txt', '.html')
+                with open(get_dir_data(g) + '/' + new_file_name, 'w') as f:
+                    f.write(template_data_html.replace('{template_content}', file_contents))
 
-                    buf.write('</pre><a href="{}"><pre>{}</pre></a><pre>{}</pre><pre>'.format( new_file_name, link_text, spaces_to_add ))
+                buf.write('</pre><a href="{}"><pre>{}</pre></a><pre>{}</pre><pre>'.format( new_file_name, link_text, spaces_to_add ))
 
             for i, col in zip(range(len(row)), row):
                 if not headers or include_ix[i]:
@@ -957,7 +958,7 @@ def get_plot_tool_path(plot_set):
     ## and do a quick check to see if it's legal to use it with the given options
     ptype = plot_set['plot_type'].lower()
     if ptype == 'bars':
-        plot_tool_path = 'plotbars.py' if series else 'plotbar.py'
+        plot_tool_path = 'plotbars_aj.py' if series else 'plotbar.py'
     elif ptype == 'line':
         plot_tool_path = 'plotlines.py' if series else 'plotline.py'
     elif ptype == 'hist2d':
@@ -1036,14 +1037,14 @@ def sanity_check_plot(args, plot_set, where_clause_new, header_records, plot_txt
             cur.execute(txn)
             data_records = cur.fetchall()
 
-            s += table_to_str(data_records, header_records, aligned=True, do_pages=args.pages)
+            s += table_to_str(data_records, header_records, aligned=True)
 
             ## NOTE TO SELF: show the power of this mechanism by including two "distribution" values but neglecting to add that field to a plot!!
 
             s += '\n'
             s += '## FILTERING TO REMOVE COLUMNS WITH NO DIFFERENCES, AND INTRINSIC COLUMNS...\n'
             s += '##     any problem is likely in one of these columns:\n'
-            s += table_to_str(data_records, header_records, aligned=True, column_filter=cf_and(cf_not_intrinsic, cf_not_identical), do_pages=args.pages)
+            s += table_to_str(data_records, header_records, aligned=True, column_filter=cf_and(cf_not_intrinsic, cf_not_identical))
 
             tee_start_errorb()
             tee(s)
@@ -1085,7 +1086,7 @@ def process_single_plot(args, plot_set, varying_cols_vals, where_clause):
     log('plot_txt_filename={}'.format(plot_txt_filename))
 
     plot_txt_file = open(plot_txt_filename, 'w')
-    plot_txt_file.write(table_to_str(data_records, quote_text=False, aligned=False, do_pages=args.pages))
+    plot_txt_file.write(table_to_str(data_records, quote_text=False, aligned=False))
     plot_txt_file.close()
 
     #############################################################
@@ -1109,6 +1110,7 @@ def process_single_plot(args, plot_set, varying_cols_vals, where_clause):
                 , series_name=plot_set['series']
                 , x_name=plot_set['x_axis']
                 , y_name=plot_set['y_axis']
+                , title=plot_set['title'] 
             )
             if isinstance(plot_set['plot_cmd_args'], dict):
                 plot_args['config'] = plot_set['plot_cmd_args']
@@ -1173,7 +1175,7 @@ def process_single_plot(args, plot_set, varying_cols_vals, where_clause):
     ## dump to disk
     plot_txt_full_filename= plot_filename.replace('.png', '_full.txt')
     plot_txt_full_filename = open(plot_txt_full_filename, 'w')
-    plot_txt_full_filename.write(table_to_str(data_records_full, header_records_full, aligned=True, row_header_html_link='__file_data', do_pages=args.pages))
+    plot_txt_full_filename.write(table_to_str(data_records_full, header_records_full, aligned=True, row_header_html_link='__file_data'))
     plot_txt_full_filename.close()
 
     #############################################################

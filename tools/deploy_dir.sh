@@ -14,7 +14,6 @@ fi
 dir=$1
 wwwdir=$2
 rsync -rpzvW --progress $1/* linux.cs.uwaterloo.ca:public_html/rift/preview/$wwwdir/
-## old: rsync -rp $1/* linux.cs.uwaterloo.ca:public_html/rift/preview/$wwwdir/
 if [ "$?" -eq "0" ]; then
     echo "To preview, open https://cs.uwaterloo.ca/~t35brown/rift/preview/${wwwdir}"
 else

@@ -5,10 +5,8 @@ if [ "$#" -ne 1 ]; then
 	exit 1
 fi
 
-#old: scp -p $1 linux.cs.uwaterloo.ca:public_html/rift/preview/preview.obj
 scp -p $1 root@rift:/var/www/html/preview.obj
 if [ "$?" -eq "0" ]; then
-	#old: echo "To preview, open https://cs.uwaterloo.ca/~t35brown/rift/preview"
     echo "To preview, open http://localhost (or appropriate ssh tunneled address)"
     echo "    note: apache2 is running on *rift*, so must open tunneling there"
     echo "          (i.e., ssh -L 80:localhost:80 user@rift)"

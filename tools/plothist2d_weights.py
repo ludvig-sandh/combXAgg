@@ -7,7 +7,7 @@ import fileinput
 import argparse
 
 parser = argparse.ArgumentParser(description='Plot a 2-dimensional histogram from THREE COLUMN data provided via a file or stdin.')
-parser.add_argument('-i', dest='infile', type=argparse.FileType('r'), default=sys.stdin, help='input file containing values to plot, THREE PER LINE in format "<x> <y> <weight>\n"; if no file is specified then stdin will be used')
+parser.add_argument('-i', dest='infile', type=argparse.FileType('r'), default=sys.stdin, help='input file containing values to plot, TWO PER LINE in format "<x> <y> <weight>\n"; if no file is specified then stdin will be used')
 parser.add_argument('-o', dest='outfile', type=argparse.FileType('w'), default=None, help='output file with any image format extension such as .png or .svg; if no file is specified then plt.show() will be used')
 # parser.add_argument('-n', dest='numBins', type=int, default=-1, help='number of histogram bins to plot (defaults to max x - min x + 1)')
 parser.add_argument('-t', dest='title', default="", help='title string for the plot')

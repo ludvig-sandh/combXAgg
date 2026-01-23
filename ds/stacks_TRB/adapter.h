@@ -1,0 +1,93 @@
+/**
+ * @file adapter.h
+ * @author Nikosmet Ajay
+ * @brief
+ * @version 0.1
+ * @date 2025-05-09
+ *
+ * @copyright Copyright (c) 2025
+ *
+ */
+
+#ifndef STACK_ADAPTER_H
+#define STACK_ADAPTER_H
+
+#include <csignal>
+#include <iostream>
+#include <set>
+#include <tuple>
+#include <utility>
+
+#include "errors.h"
+#include "stack_impl.h"
+
+using namespace std;
+
+#define RECORD_MANAGER_T record_manager<Reclaim, Alloc, Pool, node_t<K, V>>
+#define DATA_STRUCTURE_T Stack<K, V, RECORD_MANAGER_T>
+
+template <typename K, typename V, class Reclaim = reclaimer_debra<K>,
+          class Alloc = allocator_new<K>, class Pool = pool_none<K>>
+class ds_adapter {
+   private:
+    const V NO_VALUE;
+    DATA_STRUCTURE_T* const ds;
+    set<K> s;
+    K minkey, maxkey;
+
+   public:
+    ds_adapter(const int NUM_THREADS, const K& KEY_MIN, const K& KEY_MAX,
+               const V& VALUE_RESERVED, Random64* const unused2)
+        : NO_VALUE(VALUE_RESERVED),
+          ds(new DATA_STRUCTURE_T(NUM_THREADS, KEY_MIN, KEY_MAX, NO_VALUE,
+                                  0 /* unused */)) {
+        minkey = KEY_MIN;
+        maxkey = KEY_MAX;
+    }
+    ~ds_adapter() { delete ds; }
+
+    V getNoValue() { return NO_VALUE; }
+
+    void initThread(const int tid) { ds->initThread(tid); }
+    void deinitThread(const int tid) { ds->deinitThread(tid); }
+
+    V insert(const int tid, const K& key, const V& val) {
+        setbench_error(
+            "insert-replace functionality not implemented for this data "
+            "structure");
+    }
+    V insertIfAbsent(const int tid, const K& key, const V& val) {
+        ds->push(tid, val);
+        return getNoValue();
+    }
+    V erase(const int tid, const K& key) {
+        ds->pop(tid);
+        return getNoValue();
+    }
+    V find(const int tid, const K& key) { return ds->peek(tid); }
+    bool contains(const int tid, const K& key) {
+        return find(tid, key) != getNoValue();
+    }
+    int rangeQuery(const int tid, const K& lo, const K& hi, K* const resultKeys,
+                   V* const resultValues) {
+        setbench_error("not implemented");
+    }
+    void printSummary() {
+        auto recmgr = ds->debugGetRecMgr();
+        recmgr->printStatus();
+    }
+    bool validateStructure() {
+        bool valid;
+        return valid;
+    }
+    void printObjectSizes() {
+        cout << "sizes: node=" << (sizeof(node_t<K, V>)) << endl;
+    }
+    // try to clean up: must only be called by a single thread as part of the
+    // test harness!
+    void debugGCSingleThreaded() {
+        ds->debugGetRecMgr()->debugGCSingleThreaded();
+    }
+};
+
+#endif

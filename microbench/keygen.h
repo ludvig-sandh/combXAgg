@@ -7,12 +7,21 @@
 
 #ifndef KEYGEN_H
 #define KEYGEN_H
-
+#include <random>
 #include <algorithm>
 #include <cassert>
 #include <unordered_set>
 
 #include "plaf.h"
+
+struct RandAdaptor {
+    using result_type = unsigned int;
+
+    static constexpr result_type min() { return 0; }
+    static constexpr result_type max() { return RAND_MAX; }
+
+    result_type operator()() const { return std::rand(); }
+};
 
 template <typename K>
 K *generateUniqueKeys(int n, Random64 *rng) {
@@ -101,7 +110,8 @@ class KeyGeneratorZipfData {
             probs[i] = (((double)1) / pow((double)i, _alpha)) / c;
         }
         // Random should be seeded already (in main)
-        std::random_shuffle(probs + 1, probs + maxKey);
+        std::shuffle(probs + 1, probs + maxKey, RandAdaptor{});
+
         sum_probs = new double[_maxKey + 1];
         sum_probs[0] = 0;
         for (int i = 1; i <= _maxKey; i++) {
@@ -167,7 +177,7 @@ struct ZipfRejectionInversionSamplerData {
         for (int i = 0; i < maxkey + 1; ++i) {
             mapping[i] = i;
         }
-        std::random_shuffle(mapping + 1, mapping + maxkey);
+        std::shuffle(mapping + 1, mapping + maxkey, RandAdaptor{});
     }
 
     ~ZipfRejectionInversionSamplerData() { delete[] mapping; }

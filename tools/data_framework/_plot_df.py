@@ -63,7 +63,7 @@ def plot_df(kind, data, y, x='', series='', fig=None, ax=None, \
 
     tpos_err = tmax - tmean
     tneg_err = tmean - tmin
-    err = [[tneg_err[c], tpos_err[c]] for c in tmean]
+    err = [[tpos_err[c], tneg_err[c]] for c in tmean]
     # print("error bars={}".format(err))
 
     no_error_bars = False

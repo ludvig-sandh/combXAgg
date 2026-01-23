@@ -348,7 +348,9 @@ class block;
 
         inline void incrementReclaimCount() {
             SOFTWARE_BARRIER;
-            ++reclaimCount;
+            long long tmp = reclaimCount;
+            tmp ++;
+            reclaimCount = tmp;
             SOFTWARE_BARRIER;
         }
         inline long long getReclaimCount() {

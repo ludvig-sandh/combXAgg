@@ -1,8 +1,6 @@
 #!/usr/bin/python3
 
 import numpy as np
-import sys
-import os
 import platform
 import sys, getopt
 import fileinput
@@ -10,8 +8,8 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Plot a 1-dimensional histogram from SINGLE COLUMN data provided via a file or stdin.')
 parser.add_argument('-i', dest='infile', type=argparse.FileType('r'), default=sys.stdin, help='input file containing values to plot, ONE PER LINE; if none specified then will use stdin')
-parser.add_argument('-o', dest='outfile', type=argparse.FileType('w'), default='_temp.png', help='output file with any image format extension such as .png or .svg; if none specified then plt.show() will be used')
-parser.add_argument('-n', dest='numBins', type=int, default=20, help='number of histogram bins to plot (default 10)')
+parser.add_argument('-o', dest='outfile', type=argparse.FileType('w'), default=None, help='output file with any image format extension such as .png or .svg; if none specified then plt.show() will be used')
+parser.add_argument('-n', dest='numBins', type=int, default=10, help='number of histogram bins to plot (default 10)')
 parser.add_argument('-t', dest='title', default="", help='title string for the plot')
 parser.add_argument('--title-total', dest='title_total', action='store_true', help='add the total of all y-values to the title; if the title contains {} it will be replaced by the total; otherwise, the total will be appended to the end of the string')
 parser.set_defaults(title_total=False)
@@ -23,7 +21,6 @@ parser.set_defaults(useLogscale=False)
 parser.add_argument('--all-log-ticks', dest='logscaleAllticks', action='store_true', help='force the logarithmic y-axis to include all minor ticks')
 parser.set_defaults(logscaleAllticks=False)
 parser.add_argument('--xticks-multiple', dest='xticksMultipleOfBinSize', action='store_true', help='force the x-axis ticks to be a multiple of the bin size')
-parser.add_argument('--font-size', dest='font_size', type=int, default=20, help='font size to use in points (default: 20)')
 parser.add_argument('--cumulative', dest='cumulative', action='store_true', help='histogram is computed where each bin gives the counts in that bin plus all bins for SMALLER values')
 parser.set_defaults(cumulative=False)
 parser.add_argument('--rcumulative', dest='cumulative', action='store_const', const=-1, help='histogram is computed where each bin gives the counts in that bin plus all bins for LARGER values')
@@ -32,9 +29,8 @@ parser.add_argument('--rcumulative', dest='cumulative', action='store_const', co
 args = parser.parse_args()
 
 # parser.print_usage()
-# if len(sys.argv) < 2:
-if args.infile == sys.stdin:
-    # parser.print_usage()
+if len(sys.argv) < 2:
+    parser.print_usage()
     print('waiting on stdin for histogram data...')
 
 # print('args={}'.format(args))
@@ -46,12 +42,9 @@ if WIN:
     mpl.use('TkAgg')
 else:
     mpl.use('Agg')
-from matplotlib import rcParams
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 plt.style.use('dark_background')
-
-rcParams.update({'font.size': args.font_size})
 
 fig = plt.figure(figsize=(args.width_inches, args.height_inches), dpi=args.dots_per_inch)
 
@@ -146,19 +139,11 @@ ax.grid(which='minor', axis='x', linestyle='dotted', color='gray')
 plt.tight_layout()
 # ax.set_xticks(range(int(plt.xlim()[0]), int(plt.xlim()[1]), int(plt.xlim()[1]-plt.xlim()[0])//args.numBins))
 
-# if args.outfile == None:
-#     if WIN:
-#         mng = plt.get_current_fig_manager()
-#         mng.window.state('zoomed')
-#     plt.show()
-# else:
-    # if args.outfile.name != "_temp.png":
-    #     print("saving figure {}".format(args.outfile.name))
-    # plt.savefig(args.outfile.name)
-
-if args.outfile.name != "_temp.png":
-    print("saving figure {}".format(args.outfile.name))
-plt.savefig(args.outfile.name)
-
-if args.outfile.name == "_temp.png":
-    os.system("imgcat _temp.png")
+if args.outfile == None:
+    if WIN:
+        mng = plt.get_current_fig_manager()
+        mng.window.state('zoomed')
+    plt.show()
+else:
+    print("saving figure image %s\n" % args.outfile.name)
+    plt.savefig(args.outfile.name)

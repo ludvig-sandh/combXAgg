@@ -11,9 +11,9 @@ import argparse
 ## parse arguments
 ######################
 
-parser = argparse.ArgumentParser(description='Produce a pandas bar plot from TWO COLUMN <label> <y> data (or ONE COLUMN <y> data) provided via a file or stdin.')
-parser.add_argument('-i', dest='infile', type=argparse.FileType('r'), default=sys.stdin, help='input file containing lines of form <label> <y> (or lines of form <y>); if none specified then will use stdin. (if your data is not in this order, try using awk to easily shuffle columns...)')
-parser.add_argument('-o', dest='outfile', type=argparse.FileType('w'), default='out.png', help='output file with any image format extension such as .png or .svg; if none specified then plt.show() will be used')
+parser = argparse.ArgumentParser(description='Produce a pandas bar plot from TWO COLUMN <label> <y> data provided via a file or stdin.')
+parser.add_argument('-i', dest='infile', type=argparse.FileType('r'), default=sys.stdin, help='input file containing lines of form <label> <y>; if none specified then will use stdin. (if your data is not in this order, try using awk to easily shuffle columns...)')
+parser.add_argument('-o', dest='outfile', type=argparse.FileType('w'), default=None, help='output file with any image format extension such as .png or .svg; if none specified then plt.show() will be used')
 parser.add_argument('-t', dest='title', default="", help='title string for the plot')
 parser.add_argument('--title-total', dest='title_total', action='store_true', help='add the total of all y-values to the title; if the title contains {} it will be replaced by the total; otherwise, the total will be appended to the end of the string')
 parser.set_defaults(title_total=False)
@@ -32,9 +32,8 @@ args = parser.parse_args()
 
 # parser.print_usage()
 if len(sys.argv) < 2:
-    if sys.stdin.isatty():
-        parser.print_usage()
-        print('waiting on stdin for data...')
+    parser.print_usage()
+    print('waiting on stdin for histogram data...')
 
 # print('args={}'.format(args))
 
@@ -45,9 +44,6 @@ if len(sys.argv) < 2:
 x = []
 y = []
 
-one_col = False
-two_col = False
-
 i=0
 # print(args.infile)
 for line in args.infile:
@@ -57,25 +53,12 @@ for line in args.infile:
         continue
 
     tokens = line.split(" ")
-    if len(tokens) == 2:
-        two_col = True
-        x.append(tokens[0])
-        y.append(float(tokens[1]))
-    elif len(tokens) == 1:
-        one_col = True
-        x.append(i)
-        y.append(float(tokens[0]))
-    else:
+    if len(tokens) != 2:
         print("ERROR at line {}: '{}'".format(i, line))
         exit(1)
 
-if not len(x):
-    print("ERROR: no data provided, so no graph to render.")
-    quit()
-
-if one_col and two_col:
-    print("ERROR: cannot supply both one-column and two-column data lines.")
-    quit()
+    x.append(tokens[0])
+    y.append(float(tokens[1]))
 
 ######################
 ## setup matplotlib
@@ -110,7 +93,7 @@ else:
 import pandas as pd
 
 df = pd.DataFrame({'labels': x, 'values': y})
-# print('data len={}'.format(len(df['labels'])))
+print('data len={}'.format(len(df['labels'])))
 
 if args.title_total:
     import locale
@@ -200,5 +183,5 @@ if args.outfile == None:
         mng.window.state('zoomed')
     plt.show()
 else:
-    print("saving figure %s" % args.outfile.name)
+    print("saving figure image %s\n" % args.outfile.name)
     plt.savefig(args.outfile.name)
